@@ -34,9 +34,27 @@ class ContextManager:
         self._history.clear()
         logger.debug("Active conversational buffer purged.")
 
+    def refresh_system_message(self, content: str):
+        """Replace the system message at index 0, or insert one if absent.
+
+        Called by the router when the operational mode changes so that the
+        LLM always receives an up-to-date system prompt (e.g. after
+        VOICE_MODE → CAMERA_MODE transitions).
+        """
+        if self._history and self._history[0].role == "system":
+            self._history[0] = Message(role="system", content=content)
+            logger.debug("System message refreshed in context window.")
+        else:
+            self._history.insert(0, Message(role="system", content=content))
+            logger.debug("System message inserted into context window.")
+
     def _estimate_tokens(self, text: str) -> int:
-        """Heuristic token footprint calculation (~4 chars per token)."""
-        return len(text) // 4
+        """Heuristic token footprint calculation.
+
+        Using ~3 chars/token which better approximates sub-word tokenizers
+        used by smaller local models (Qwen, Phi, etc.).
+        """
+        return len(text) // 3
 
     def _compress(self):
         """
@@ -60,3 +78,4 @@ class ContextManager:
                 pop_idx = 1 if self._history[0].role == "system" else 0
                 popped = self._history.pop(pop_idx)
                 total_tokens -= self._estimate_tokens(popped.content)
+

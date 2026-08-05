@@ -74,7 +74,10 @@ class ToolManager:
                 result = await asyncio.wait_for(handler(**args), timeout=exec_timeout)
             else:
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, lambda: handler(**args))
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: handler(**args)),
+                    timeout=exec_timeout
+                )
                 
             logger.info(f"Successfully finalized tool execution: {tool_name}")
             return result

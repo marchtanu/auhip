@@ -6,6 +6,7 @@ from .active_commands_panel import ActiveCommandsPanel
 class RightPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._dividers = []
         self.setFixedWidth(260)
         self.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
@@ -18,12 +19,12 @@ class RightPanel(QFrame):
         layout.setContentsMargins(16, 20, 16, 16)
         layout.setSpacing(10)
 
-        header = QLabel("Command history")
-        header.setStyleSheet(
+        self.header = QLabel("Command history")
+        self.header.setStyleSheet(
             f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
-        layout.addWidget(header)
+        layout.addWidget(self.header)
         layout.addWidget(self._make_divider())
 
         self.history_panel = HistoryPanel()
@@ -38,9 +39,25 @@ class RightPanel(QFrame):
         line = QWidget()
         line.setFixedHeight(1)
         line.setStyleSheet(f"background: {COLORS['border_soft']}; border: none; border-radius: 0;")
+        self._dividers.append(line)
         container = QWidget()
         container.setStyleSheet("background: transparent; border: none;")
         l = QVBoxLayout(container)
         l.setContentsMargins(0, 16, 0, 12)
         l.addWidget(line)
         return container
+
+    def refresh_theme(self):
+        self.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }"
+        )
+        self.header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        for div in getattr(self, '_dividers', []):
+            div.setStyleSheet(f"background: {COLORS['border_soft']}; border: none; border-radius: 0;")
+        self.history_panel.refresh_theme()
+        self.active_commands.refresh_theme()
+

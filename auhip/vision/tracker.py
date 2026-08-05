@@ -27,12 +27,10 @@ class HandTracker:
         if self.max_hands != max_hands:
             self._setup_hands(max_hands)
 
-    def process_frame(self, frame: np.ndarray):
+    def process_frame(self, rgb_frame: np.ndarray):
         """
-        Process the BGR frame and return (RGB_annotated_frame, landmarks_list)
+        Process the RGB frame and return (RGB_annotated_frame, landmarks_list)
         """
-        # Convert the BGR image to RGB before processing.
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # To improve performance, optionally mark the image as not writeable to pass by reference.
         rgb_frame.flags.writeable = False

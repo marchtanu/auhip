@@ -1,7 +1,7 @@
 import asyncio
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTextEdit, QCheckBox, QComboBox
+    QPushButton, QTextEdit, QCheckBox, QComboBox, QLineEdit
 )
 from PyQt6.QtCore import Qt
 from auhip.gui.theme import COLORS
@@ -34,12 +34,12 @@ class DebugPanel(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
 
-        title = QLabel("Developer tools")
-        title.setStyleSheet(
+        self.title = QLabel("Developer tools")
+        self.title.setStyleSheet(
             f"color: {COLORS['text_on_dark']}; font-size: 13px; font-weight: 600;"
             "letter-spacing: -0.1px;"
         )
-        left_layout.addWidget(title)
+        left_layout.addWidget(self.title)
 
         self._mic_check = QCheckBox("Microphone enabled")
         self._mic_check.setChecked(True)
@@ -50,9 +50,9 @@ class DebugPanel(QWidget):
         left_layout.addWidget(self._mic_check)
         
         # Hardware Selection
-        hw_label = QLabel("Hardware")
-        hw_label.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-top: 5px;")
-        left_layout.addWidget(hw_label)
+        self.hw_label = QLabel("Hardware")
+        self.hw_label.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-top: 5px;")
+        left_layout.addWidget(self.hw_label)
         
         self.cam_select = QComboBox()
         self.cam_select.setStyleSheet(self._combo_style())
@@ -72,10 +72,10 @@ class DebugPanel(QWidget):
         layout.addWidget(left)
 
         # Divider
-        div = QWidget()
-        div.setFixedWidth(1)
-        div.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
-        layout.addWidget(div)
+        self.div1 = QWidget()
+        self.div1.setFixedWidth(1)
+        self.div1.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
+        layout.addWidget(self.div1)
 
         # Center: action buttons -> Essential Buttons
         btn_area = QWidget()
@@ -90,10 +90,10 @@ class DebugPanel(QWidget):
         mode_layout.setContentsMargins(0, 0, 0, 0)
         mode_layout.setSpacing(6)
         
-        mode_lbl = QLabel("Mode")
-        mode_lbl.setFixedWidth(50)
-        mode_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
-        mode_layout.addWidget(mode_lbl)
+        self.mode_lbl = QLabel("Mode")
+        self.mode_lbl.setFixedWidth(50)
+        self.mode_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        mode_layout.addWidget(self.mode_lbl)
 
         self._mode_btns = {}
         for text, state in [("Voice", State.VOICE_MODE), ("Vision", State.CAMERA_MODE), 
@@ -113,16 +113,16 @@ class DebugPanel(QWidget):
         feat_layout.setContentsMargins(0, 0, 0, 0)
         feat_layout.setSpacing(6)
 
-        feat_lbl = QLabel("Feature")
-        feat_lbl.setFixedWidth(50)
-        feat_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
-        feat_layout.addWidget(feat_lbl)
+        self.feat_lbl = QLabel("Feature")
+        self.feat_lbl.setFixedWidth(50)
+        self.feat_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        feat_layout.addWidget(self.feat_lbl)
 
         self._btn_eyes = self._add_toggle_btn(feat_layout, "Eyes", self._toggle_eyes)
         self._btn_hands = self._add_toggle_btn(feat_layout, "Hand", self._toggle_hands, initial=True)
         self._btn_multi = self._add_toggle_btn(feat_layout, "Multi", self._toggle_multi)
         
-        self._add_btn(feat_layout, "Shutdown", self._sim_shutdown, primary=False)
+        self._btn_shutdown = self._add_btn(feat_layout, "Shutdown", self._sim_shutdown, primary=False)
         
         feat_layout.addStretch()
 
@@ -134,10 +134,10 @@ class DebugPanel(QWidget):
         skill_layout.setContentsMargins(0, 0, 0, 0)
         skill_layout.setSpacing(6)
 
-        skill_lbl = QLabel("Skill")
-        skill_lbl.setFixedWidth(50)
-        skill_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
-        skill_layout.addWidget(skill_lbl)
+        self.skill_lbl = QLabel("Skill")
+        self.skill_lbl.setFixedWidth(50)
+        self.skill_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        skill_layout.addWidget(self.skill_lbl)
 
         self.func_select = QComboBox()
         self.func_select.setStyleSheet(self._combo_style())
@@ -163,6 +163,47 @@ class DebugPanel(QWidget):
         skill_layout.addWidget(self._exec_btn)
         btn_layout_outer.addWidget(skill_container)
 
+        # 4. Settings Row — Wake phrase config
+        cfg_container = QWidget()
+        cfg_layout = QHBoxLayout(cfg_container)
+        cfg_layout.setContentsMargins(0, 0, 0, 0)
+        cfg_layout.setSpacing(6)
+
+        self.cfg_lbl = QLabel("Config")
+        self.cfg_lbl.setFixedWidth(50)
+        self.cfg_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        cfg_layout.addWidget(self.cfg_lbl)
+
+        self.wake_lbl = QLabel("Wake phrase:")
+        self.wake_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px;")
+        cfg_layout.addWidget(self.wake_lbl)
+
+        from auhip.core.config import config as _cfg
+        self._wake_input = QLineEdit(_cfg.WAKE_PHRASE)
+        self._wake_input.setPlaceholderText("e.g. daddy home")
+        self._wake_input.setStyleSheet(
+            f"background: {COLORS['border_dark']}; border: 1px solid {COLORS['border_dark']};"
+            f"border-radius: 4px; color: {COLORS['text_on_dark']}; font-size: 11px; padding: 2px 8px;"
+        )
+        self._wake_input.setFixedWidth(130)
+        cfg_layout.addWidget(self._wake_input)
+
+        self.save_btn = QPushButton("Apply")
+        self.save_btn.setFixedWidth(48)
+        self.save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['accent']}; border: none;
+                border-radius: 4px; color: white;
+                padding: 2px 8px; font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent_hover']}; }}
+        """)
+        self.save_btn.clicked.connect(self._apply_wake_phrase)
+        cfg_layout.addWidget(save_btn)
+
+        cfg_layout.addStretch()
+        btn_layout_outer.addWidget(cfg_container)
+
         btn_layout_outer.addStretch()
         layout.addWidget(btn_area, 1)
 
@@ -173,10 +214,10 @@ class DebugPanel(QWidget):
         self._update_ui_states()
 
         # Divider
-        div2 = QWidget()
-        div2.setFixedWidth(1)
-        div2.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
-        layout.addWidget(div2)
+        self.div2 = QWidget()
+        self.div2.setFixedWidth(1)
+        self.div2.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
+        layout.addWidget(self.div2)
 
         # Right: event log
         log_area = QWidget()
@@ -185,8 +226,8 @@ class DebugPanel(QWidget):
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(4)
 
-        log_title = QLabel("Event log")
-        log_title.setStyleSheet(
+        self.log_title = QLabel("Event log")
+        self.log_title.setStyleSheet(
             f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; letter-spacing: 0.3px;"
         )
         log_layout.addWidget(log_title)
@@ -242,6 +283,7 @@ class DebugPanel(QWidget):
             """)
         btn.clicked.connect(callback)
         layout.addWidget(btn)
+        return btn
 
     def _log_event(self, msg: str):
         from datetime import datetime
@@ -403,7 +445,89 @@ class DebugPanel(QWidget):
             self._mic_instance.stop()
             self._mic_instance.start(device_index=mic_idx)
 
+    def _apply_wake_phrase(self):
+        from auhip.core.config import config as _cfg
+        new_phrase = self._wake_input.text().strip().lower()
+        if new_phrase:
+            _cfg.WAKE_PHRASE = new_phrase
+            self._log_event(f"Wake phrase updated: '{new_phrase}'")
+        else:
+            self._wake_input.setText(_cfg.WAKE_PHRASE)
+            self._log_event("Wake phrase unchanged (empty input).")
+
     def set_mic_instance(self, mic): self._mic_instance = mic
     def log(self, msg: str): self._log_event(msg)
     @property
     def mic_enabled(self) -> bool: return self._mic_enabled
+
+    def refresh_theme(self):
+        """Re-apply all colours after a theme switch."""
+        self.setStyleSheet(
+            f"QWidget {{ background: {COLORS['dark_card']}; border-top: 1px solid {COLORS['border_dark']};"
+            "border-radius: 0; }}"
+        )
+        self.title.setStyleSheet(
+            f"color: {COLORS['text_on_dark']}; font-size: 13px; font-weight: 600;"
+            "letter-spacing: -0.1px;"
+        )
+        self._mic_check.setStyleSheet(
+            f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; spacing: 6px;"
+        )
+        self.hw_label.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-top: 5px;")
+        
+        self.cam_select.setStyleSheet(self._combo_style())
+        self.mic_select.setStyleSheet(self._combo_style())
+        self.func_select.setStyleSheet(self._combo_style())
+        
+        self.div1.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
+        self.div2.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
+        
+        self.mode_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        self.feat_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        self.skill_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        self.cfg_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        self.wake_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px;")
+        self.log_title.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; letter-spacing: 0.3px;")
+        
+        self._wake_input.setStyleSheet(
+            f"background: {COLORS['border_dark']}; border: 1px solid {COLORS['border_dark']};"
+            f"border-radius: 4px; color: {COLORS['text_on_dark']}; font-size: 11px; padding: 2px 8px;"
+        )
+        self.save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['accent']}; border: none;
+                border-radius: 4px; color: white;
+                padding: 2px 8px; font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent_hover']}; }}
+        """)
+        
+        self._exec_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['border_dark']};
+                border: 1px solid {COLORS['border_dark']};
+                border-radius: 4px;
+                color: {COLORS['text_on_dark']};
+                padding: 2px 12px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent']}; color: white; }}
+        """)
+        
+        self._btn_shutdown.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['border_dark']};
+                border: 1px solid {COLORS['border_dark']};
+                border-radius: 6px;
+                color: {COLORS['text_on_dark_muted']};
+                padding: 6px 14px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background-color: #2E2B27;
+                color: {COLORS['text_on_dark']};
+            }}
+            QPushButton:pressed {{ color: {COLORS['accent']}; }}
+        """)
+        
+        self._update_ui_states()

@@ -38,3 +38,26 @@ class HistoryPanel(QWidget):
         item = QListWidgetItem(label)
         item.setForeground(QColor(COLORS["text_body"]))
         self._list.insertItem(0, item)
+
+    def refresh_theme(self):
+        """Re-apply styles after a theme switch."""
+        self._list.setStyleSheet(f"""
+            QListWidget {{
+                background: transparent;
+                border: none;
+                color: {COLORS['text_body']};
+                font-size: 13px;
+            }}
+            QListWidget::item {{
+                padding: 10px 0;
+                border-bottom: 1px solid {COLORS['border_soft']};
+            }}
+            QListWidget::item:selected {{
+                background: transparent;
+                color: {COLORS['accent']};
+            }}
+        """)
+        for idx in range(self._list.count()):
+            item = self._list.item(idx)
+            item.setForeground(QColor(COLORS["text_body"]))
+

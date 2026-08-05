@@ -1,14 +1,17 @@
 import os
 from dataclasses import dataclass, field
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass
 class LLMConfig:
     # Local Model Settings (Primary Intelligence)
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    LOCAL_MODEL_NAME: str = os.getenv("LOCAL_MODEL_NAME", "qwen3:4b") # Alternative: phi4-mini
-    LOCAL_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_TIMEOUT_SECONDS", "8.0"))
+    LOCAL_MODEL_NAME: str = os.getenv("LOCAL_MODEL_NAME", "qwen:4b") # Alternative: phi4-mini
+    LOCAL_TIMEOUT_SECONDS: float = float(os.getenv("LOCAL_TIMEOUT_SECONDS", "45.0"))
     LOCAL_MAX_RETRIES: int = int(os.getenv("LOCAL_MAX_RETRIES", "2"))
     
     # Cloud Escalation Settings (Fallback Layer)

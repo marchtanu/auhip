@@ -26,6 +26,19 @@ class GeminiProvider(BaseLLMProvider):
         
         # Determine internal activation state safely
         self.configured = bool(self.api_key and self.api_key.strip() not in ("", "your-api-key-here"))
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Lazy-init a reusable aiohttp session to avoid per-request TCP overhead."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=self.timeout)
+        return self._session
+
+    async def close(self):
+        """Gracefully close the underlying HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
 
     async def is_healthy(self) -> bool:
         return self.configured
@@ -63,14 +76,21 @@ class GeminiProvider(BaseLLMProvider):
         )
 
         contents = []
-        # Transform history structures to Gemini REST specs
+        system_content = ""
+        # Transform history structures to Gemini REST specs, extracting system instructions
         for msg in request.history:
-            role = "model" if msg.role == "assistant" else "user"
-            contents.append({"role": role, "parts": [{"text": msg.content}]})
+            if msg.role == "system":
+                system_content = f"{msg.content}\n\n{system_content}".strip() if system_content else msg.content
+            else:
+                role = "model" if msg.role == "assistant" else "user"
+                contents.append({"role": role, "parts": [{"text": msg.content}]})
 
-        # Inject final user command alongside instruction wrapper
-        final_text = f"{request.prompt}\n\n{schema_guidance}" if request.require_structured else request.prompt
-        contents.append({"role": "user", "parts": [{"text": final_text}]})
+        # Integrate schema guidance into the system instruction for direct, robust steering
+        if request.require_structured:
+            system_content = f"{system_content}\n\n{schema_guidance}".strip() if system_content else schema_guidance
+
+        # NOTE: The user message is already present in request.history (appended by the router).
+        # Do NOT re-append request.prompt here to avoid duplicate user messages.
 
         payload = {
             "contents": contents,
@@ -78,31 +98,35 @@ class GeminiProvider(BaseLLMProvider):
                 "temperature": 0.1
             }
         }
+        if system_content:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_content}]
+            }
 
+        session = await self._get_session()
         last_error = None
         for attempt in range(llm_config.CLOUD_MAX_RETRIES):
             try:
                 headers = {"Content-Type": "application/json"}
-                async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                    async with session.post(url, headers=headers, json=payload) as resp:
-                        if resp.status != 200:
-                            err_text = await resp.text()
-                            logger.error(f"Gemini API failure ({resp.status}): {err_text}")
-                            if resp.status == 429:
-                                # Exponential rate-limit cooloff
-                                await asyncio.sleep(2 ** attempt)
-                                continue
-                            raise RuntimeError(f"Cloud execution error: {resp.status}")
+                async with session.post(url, headers=headers, json=payload) as resp:
+                    if resp.status != 200:
+                        err_text = await resp.text()
+                        logger.error(f"Gemini API failure ({resp.status}): {err_text}")
+                        if resp.status == 429:
+                            # Exponential rate-limit cooloff
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+                        raise RuntimeError(f"Cloud execution error: {resp.status}")
 
-                        data = await resp.json()
-                        candidates = data.get("candidates", [])
-                        if not candidates:
-                            raise ValueError("Received empty answer array from Cloud model.")
+                    data = await resp.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        raise ValueError("Received empty answer array from Cloud model.")
 
-                        part = candidates[0].get("content", {}).get("parts", [{}])[0]
-                        raw_text = part.get("text", "")
-                        
-                        return ResponseParser.parse_structured(raw_text, provider="cloud")
+                    part = candidates[0].get("content", {}).get("parts", [{}])[0]
+                    raw_text = part.get("text", "")
+                    
+                    return ResponseParser.parse_structured(raw_text, provider="cloud")
 
             except asyncio.TimeoutError:
                 last_error = "Cloud processing timed out."
@@ -123,3 +147,4 @@ class GeminiProvider(BaseLLMProvider):
             raw_response=str(last_error),
             provider_used="cloud"
         )
+

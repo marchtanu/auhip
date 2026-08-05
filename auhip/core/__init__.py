@@ -1,0 +1,1 @@
+# auhip core package namespace

@@ -15,6 +15,7 @@ import logging
 import time
 import numpy as np
 import cv2
+from .filters import OneEuroFilter
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class VisionWorker(QObject):
 
         self.enable_eye_tracking  = False
         self.enable_hand_tracking = True
+        self.draw_face_mesh       = False
 
         # Active vision mode — controlled by SET_VISION_MODE event
         self._vision_mode = self.MODE_NONE
@@ -57,6 +59,8 @@ class VisionWorker(QObject):
         self._is_clicking  = False
         self._hold_start   = None   # Timestamp when pinch was detected
         self._holding      = False
+        self.filter_x      = None
+        self.filter_y      = None
 
         # Camera mode: track whether index finger is currently raised
         self._index_up_active    = False
@@ -64,7 +68,16 @@ class VisionWorker(QObject):
         self._index_down_count   = 0
         self._last_gesture_pub   = "none"
         self._mode_switch_time   = 0.0
-        
+
+        # Camera mode: peace sign hold-to-exit tracking
+        self._peace_sign_start   = 0.0   # Timestamp when peace sign was first confirmed
+        self._peace_sign_active  = False  # Whether the peace sign hold is in progress
+        self._PEACE_HOLD_SECS    = 1.0   # Seconds to hold before exit triggers
+
+        # Control mode: scroll gesture tracking
+        self._scroll_fist_prev_y = None  # Previous wrist Y for fist-scroll delta
+        self._SCROLL_SPEED       = 8     # Scroll units per frame of movement
+
         pyautogui.FAILSAFE = False
 
         self.timer       = QTimer()
@@ -111,6 +124,8 @@ class VisionWorker(QObject):
         self._is_clicking     = False
         self._hold_start      = None
         self._holding         = False
+        self.filter_x         = None
+        self.filter_y         = None
         self._index_up_active = False
         self._last_gesture_pub = "none"
         self._mode_switch_time = time.time()
@@ -171,7 +186,9 @@ class VisionWorker(QObject):
         if frame is None:
             return
 
-        rgb_annotated_frame = frame.copy()
+        # Convert to RGB once and use it for all processing
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb_annotated_frame = rgb_frame.copy()
         hand_landmarks = []
 
         gesture    = "none"
@@ -225,7 +242,7 @@ class VisionWorker(QObject):
         attention_data = {"attention_state": "UNKNOWN"}
 
         if self.enable_eye_tracking:
-            eye_results = self.eye_tracker.process(frame)
+            eye_results = self.eye_tracker.process(rgb_frame)
             has_face = eye_results is not None
             
             if has_face:
@@ -243,13 +260,35 @@ class VisionWorker(QObject):
             attention_data = self.attention_engine.process(has_face, gaze_data, blink_data)
 
         # ── Debug Drawing ─────────────────────────────────────────────────────
-        if has_face and "face_landmarks" in eye_results:
+        if has_face:
             h, w, _ = debug_frame.shape
-            for lm in eye_results["face_landmarks"]:
-                cv2.circle(debug_frame, (int(lm["x"] * w), int(lm["y"] * h)), 1, (0, 255, 0), -1)
+            
+            # Draw eye contours (outer boundaries of left & right eyes)
             for eye_key in ["left_eye", "right_eye"]:
-                iris = eye_results[eye_key]["iris_center"]
-                cv2.circle(debug_frame, (int(iris["x"] * w), int(iris["y"] * h)), 3, (255, 0, 0), -1)
+                eye_data = eye_results.get(eye_key) if eye_results else None
+                if eye_data and "landmarks" in eye_data:
+                    # Draw eye boundary outline
+                    points = []
+                    for lm in eye_data["landmarks"]:
+                        pt = (int(lm["x"] * w), int(lm["y"] * h))
+                        points.append(pt)
+                        cv2.circle(debug_frame, pt, 1, (0, 255, 0), -1)
+                    
+                    # Draw connection lines between eye landmarks to outline them
+                    for i in range(len(points)):
+                        pt1 = points[i]
+                        pt2 = points[(i + 1) % len(points)]
+                        cv2.line(debug_frame, pt1, pt2, (0, 255, 0), 1)
+
+                # Draw iris center (red dot)
+                if eye_data and eye_data.get("iris_center"):
+                    iris = eye_data["iris_center"]
+                    cv2.circle(debug_frame, (int(iris["x"] * w), int(iris["y"] * h)), 3, (255, 0, 0), -1)
+
+            # Draw full face mesh only if explicitly requested (off by default for performance/aesthetics)
+            if self.draw_face_mesh and eye_results and "face_landmarks" in eye_results:
+                for lm in eye_results["face_landmarks"]:
+                    cv2.circle(debug_frame, (int(lm["x"] * w), int(lm["y"] * h)), 1, (0, 180, 0), -1)
 
         vision_dict = {
             "fps":           self.camera.get_fps(),
@@ -271,12 +310,34 @@ class VisionWorker(QObject):
     # ── Camera Mode: one_index_up voice trigger ───────────────────────────────
 
     def _handle_camera_mode_index(self, gesture: str):
-        """Publish TEMP_VOICE_START / TEMP_VOICE_END when index is raised/lowered."""
+        """Publish TEMP_VOICE_START / TEMP_VOICE_END when index is raised/lowered.
+        Also handles peace_sign hold-for-1s to exit Camera Mode."""
         if self._vision_mode != self.MODE_CAMERA:
             return
-            
-        currently_up = (gesture == "one_index_up")
 
+        currently_up = (gesture == "one_index_up")
+        is_peace     = (gesture == "peace_sign")
+
+        # ── Peace sign hold-to-exit ──────────────────────────────────────
+        if is_peace:
+            if not self._peace_sign_active:
+                self._peace_sign_active = True
+                self._peace_sign_start  = time.time()
+                logger.debug("Peace sign hold started.")
+            else:
+                held = time.time() - self._peace_sign_start
+                if held >= self._PEACE_HOLD_SECS:
+                    self._peace_sign_active = False
+                    self._peace_sign_start  = 0.0
+                    logger.info("Peace sign held — exiting Camera Mode.")
+                    asyncio.create_task(event_bus.publish("EXIT_SUB_MODE", {}))
+                    return
+        else:
+            # Reset peace-sign state if the gesture changes
+            self._peace_sign_active = False
+            self._peace_sign_start  = 0.0
+
+        # ── Index-up temporary voice ──────────────────────────────────────
         # Debounce logic: 5 frames up to start, 10 frames down to end
         if currently_up:
             self._index_up_count += 1
@@ -341,15 +402,15 @@ class VisionWorker(QObject):
             x = np.interp(index_tip['x'], [mx, 1.0 - mx], [0, screen_w])
             y = np.interp(index_tip['y'], [my, 1.0 - my], [0, screen_h])
 
-            if self._cursor_pos is None:
+            curr_time = time.time()
+            if self._cursor_pos is None or self.filter_x is None or self.filter_y is None:
+                self.filter_x = OneEuroFilter(curr_time, x, mincutoff=1.0, beta=0.08)
+                self.filter_y = OneEuroFilter(curr_time, y, mincutoff=1.0, beta=0.08)
                 self._cursor_pos = (x, y)
             else:
-                # Responsive smoothing: higher alpha when dragging for precision
-                alpha = 0.45 if self._holding else 0.35
-                self._cursor_pos = (
-                    self._cursor_pos[0] * (1 - alpha) + x * alpha,
-                    self._cursor_pos[1] * (1 - alpha) + y * alpha,
-                )
+                filtered_x = self.filter_x(curr_time, x)
+                filtered_y = self.filter_y(curr_time, y)
+                self._cursor_pos = (filtered_x, filtered_y)
             pyautogui.moveTo(int(self._cursor_pos[0]), int(self._cursor_pos[1]), _pause=False)
 
         # ── Interaction Logic (Click/Drag) ──
@@ -375,7 +436,7 @@ class VisionWorker(QObject):
                     # Check for double click gesture
                     if not hasattr(self, '_last_click_time'):
                         self._last_click_time = 0
-                    
+
                     if current_time - self._last_click_time < 0.4: # Double click threshold
                         pyautogui.doubleClick()
                         asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🖱 Double Click"}))
@@ -386,10 +447,28 @@ class VisionWorker(QObject):
                         asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": "🖱 Click"}))
                         logger.info("Click (Gesture).")
                         self._last_click_time = current_time
-                
+
                 self._hold_start = None
                 self._holding = False
             self._is_clicking = False
+
+        # ── Scroll Gesture: closed fist moving vertically ─────────────────
+        gesture_type, _ = self.gesture_engine.detect_static_gesture(landmarks)
+        is_fist = (gesture_type == "fist")
+
+        if is_fist and not pinching and not self._holding:
+            wrist_y = landmarks[0]['y']  # Normalised 0..1
+            if self._scroll_fist_prev_y is not None:
+                delta_y = wrist_y - self._scroll_fist_prev_y
+                scroll_threshold = 0.005  # Minimum movement to trigger scroll
+                if abs(delta_y) > scroll_threshold:
+                    direction = -1 if delta_y < 0 else 1  # Up = negative delta = scroll up
+                    pyautogui.scroll(direction * self._SCROLL_SPEED)
+                    label = "🖱 Scroll Up" if direction < 0 else "🖱 Scroll Down"
+                    asyncio.create_task(event_bus.publish("LAST_COMMAND", {"label": label}))
+            self._scroll_fist_prev_y = wrist_y
+        else:
+            self._scroll_fist_prev_y = None  # Reset when not fisting
 
     # ── Event Publishing ──────────────────────────────────────────────────────
 

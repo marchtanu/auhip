@@ -27,15 +27,15 @@ class VisionPanel(QFrame):
 
         # Header
         header_layout = QHBoxLayout()
-        title = QLabel("Vision & Attention")
-        title.setStyleSheet(f"""
+        self.title = QLabel("Vision & Attention")
+        self.title.setStyleSheet(f"""
             color: {COLORS['text']}; 
             font-size: 15px; 
             font-weight: 600;
             letter-spacing: -0.1px; 
             border: none;
         """)
-        header_layout.addWidget(title)
+        header_layout.addWidget(self.title)
         
         self._fps_lbl = QLabel("FPS: 0")
         self._fps_lbl.setStyleSheet(f"""
@@ -99,18 +99,20 @@ class VisionPanel(QFrame):
 
     def update_frame(self, frame: np.ndarray):
         # Frame is already RGB from the HandTracker in VisionWorker
-        h, w, ch = frame.shape
-        bytes_per_line = ch * w
-        q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-        
-        # Keep aspect ratio
-        pixmap = QPixmap.fromImage(q_img).scaled(
-            self._feed_lbl.width(), 
-            self._feed_lbl.height(), 
-            Qt.AspectRatioMode.KeepAspectRatio, 
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self._feed_lbl.setPixmap(pixmap)
+        lbl_w = self._feed_lbl.width()
+        lbl_h = self._feed_lbl.height()
+        if lbl_w > 0 and lbl_h > 0:
+            h, w, ch = frame.shape
+            scale = min(lbl_w / w, lbl_h / h)
+            new_w = max(int(w * scale), 1)
+            new_h = max(int(h * scale), 1)
+            frame_resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            
+            h_r, w_r, ch = frame_resized.shape
+            bytes_per_line = ch * w_r
+            q_img = QImage(frame_resized.data, w_r, h_r, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_img)
+            self._feed_lbl.setPixmap(pixmap)
 
     def update_data(self, data: dict):
         self._fps_lbl.setText(f"FPS: {data.get('fps', 0):.1f}")
@@ -146,3 +148,46 @@ class VisionPanel(QFrame):
             self._hand_lbl.setText(f"Hand: {gesture_data['type']} ({gesture_data['confidence']:.2f})")
         else:
             self._hand_lbl.setText("Hand: None")
+
+    def refresh_theme(self):
+        """Re-apply styles after a theme switch."""
+        self.setStyleSheet(f"""
+            QFrame {{ 
+                background: {COLORS['panel']}; 
+                border: 1px solid {COLORS['border']};
+                border-radius: 12px; 
+            }}
+        """)
+        self.title.setStyleSheet(f"""
+            color: {COLORS['text']}; 
+            font-size: 15px; 
+            font-weight: 600;
+            letter-spacing: -0.1px; 
+            border: none;
+        """)
+        self._fps_lbl.setStyleSheet(f"""
+            color: {COLORS['text_muted']}; 
+            font-size: 12px; 
+            border: none;
+        """)
+        self._feed_lbl.setStyleSheet(f"""
+            background: {COLORS['dark_card']};
+            border-radius: 8px;
+            color: {COLORS['text_on_dark_muted']};
+        """)
+        self._gaze_lbl.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 500; border: none;")
+        self._blink_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 13px; font-weight: 500; border: none;")
+        self._attention_lbl.setStyleSheet(f"color: {COLORS['success']}; font-size: 13px; font-weight: 600; border: none;")
+        self._hand_lbl.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 500; border: none;")
+        self.calib_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLORS['panel_soft']};
+                color: {COLORS['text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background: {COLORS['border_soft']}; }}
+        """)
+

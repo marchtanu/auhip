@@ -4,7 +4,8 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QApp
 from PyQt6.QtCore import Qt
 
 from auhip.core.event_bus import event_bus
-from auhip.gui.theme import COLORS, STATE_COLORS, STYLESHEET
+import auhip.gui.theme as theme_module
+from auhip.gui.theme import COLORS, STATE_COLORS
 from auhip.gui.components.nav_bar import NavBar
 from auhip.gui.components.left_panel import LeftPanel
 from auhip.gui.components.center_panel import CenterPanel
@@ -17,10 +18,11 @@ class AuhipMainWindow(QMainWindow):
         super().__init__()
         self._fsm = fsm
         self._vision_worker = vision_worker
+        self._dark_mode = False
 
         self.setWindowTitle("auhip")
         self.setMinimumSize(1200, 760)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(theme_module.STYLESHEET)
 
         self._build_ui()
         self._connect_events()
@@ -59,9 +61,10 @@ class AuhipMainWindow(QMainWindow):
         root_layout.addWidget(self.debug_panel)
 
         self.setCentralWidget(root)
+        self._root_widget = root
+        self._body_widget = body
 
     def _connect_events(self):
-        # UI Bridge: Mapping events to component methods
         mappings = {
             "STATE_CHANGED":     self._on_state_changed,
             "MODE_CHANGED":      self._on_mode_changed,
@@ -76,18 +79,60 @@ class AuhipMainWindow(QMainWindow):
             "SET_HAND_STATE":    self._on_set_hand_state,
             "TOGGLE_FULLSCREEN": self._on_toggle_fullscreen,
             "MINIMIZE_WINDOW":   self._on_minimize_window,
-            "APP_EXIT":          self._on_app_exit
+            "APP_EXIT":          self._on_app_exit,
+            "TOGGLE_THEME":      self._on_toggle_theme,
         }
         for event, handler in mappings.items():
             event_bus.subscribe(event, handler)
 
+    # ── Theme Switching ───────────────────────────────────────────────────────
+
+    async def _on_toggle_theme(self, data: dict):
+        self._dark_mode = not self._dark_mode
+        dark = self._dark_mode
+
+        # Update shared theme dicts
+        theme_module.set_theme(dark)
+        theme_module._sync_state_colors(dark)
+
+        # Update response colours for the transcript/response panels
+        if dark:
+            theme_module.RESPONSE_COLORS.update(theme_module.DARK_RESPONSE_COLORS)
+        else:
+            theme_module.RESPONSE_COLORS.update({
+                "info":     "#6C6A64",
+                "success":  "#5DB872",
+                "warning":  "#E8A55A",
+                "response": "#141413",
+                "shutdown": "#C64545",
+                "greeting": "#CC785C",
+            })
+
+        # Rebuild and apply the global stylesheet
+        new_sheet = theme_module.build_stylesheet(dark)
+        self.setStyleSheet(new_sheet)
+
+        # Refresh root/body background colour
+        self._root_widget.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
+        self._body_widget.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
+
+        # Delegate to individual panels that maintain their own stylesheets
+        self.nav_bar.refresh_theme(dark)
+        self.left_panel.refresh_theme()
+        self.center_panel.refresh_theme(dark)
+        self.right_panel.refresh_theme()
+        self.debug_panel.refresh_theme()
+
+
+    # ── State Events ──────────────────────────────────────────────────────────
+
     async def _on_state_changed(self, data: dict):
         state, label = data["state"], data["label"]
         color = STATE_COLORS.get(state, COLORS["text_muted"])
-        
+
         self.left_panel.state_panel.set_state(state, label, data.get("message", ""))
         self.nav_bar.set_status(label, color)
-        
+
         if state == "STANDBY":
             self.hide()
 
@@ -161,9 +206,11 @@ class AuhipMainWindow(QMainWindow):
         QApplication.instance().quit()
 
     async def _on_snap(self, data: dict):
-        # Just increment a counter here, the LeftPanel handles its own dots logic via internal state if we wanted,
-        # but for now we'll just proxy the count or let it handle the event if it subscribed.
-        # Actually, let's just use the component's method.
+        # count=0 is a reset signal (e.g. sent when Voice Mode is entered)
+        if data.get("count", -1) == 0:
+            self._snap_count = 0
+            self.left_panel.update_snaps(0)
+            return
         if not hasattr(self, '_snap_count'): self._snap_count = 0
         self._snap_count = (self._snap_count % 2) + 1
         self.left_panel.update_snaps(self._snap_count)

@@ -20,13 +20,11 @@ class EyeTracker:
         self.LEFT_IRIS_INDICES = [468, 469, 470, 471, 472]
         self.RIGHT_IRIS_INDICES = [473, 474, 475, 476, 477]
         
-    def process(self, frame: np.ndarray) -> Optional[Dict[str, EyeData]]:
+    def process(self, frame_rgb: np.ndarray) -> Optional[Dict[str, EyeData]]:
         """
-        Processes a BGR image and extracts eye/iris landmarks.
+        Processes an RGB image and extracts eye/iris landmarks.
         Returns a dict with 'left_eye' and 'right_eye' EyeData, or None if no face is found.
         """
-        # Convert the BGR image to RGB before processing
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # To improve performance, optionally mark the image as not writeable
         frame_rgb.flags.writeable = False

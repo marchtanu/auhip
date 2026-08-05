@@ -22,18 +22,18 @@ class CommandWidget(QFrame):
         cl.setContentsMargins(10, 8, 10, 8)
         cl.setSpacing(2)
         
-        name_lbl = QLabel(name)
-        name_lbl.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 600; border: none;")
+        self.name_lbl = QLabel(name)
+        self.name_lbl.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 600; border: none;")
         
-        desc_lbl = QLabel(desc)
-        desc_lbl.setStyleSheet(f"color: {COLORS['text_body']}; font-size: 12px; border: none;")
+        self.desc_lbl = QLabel(desc)
+        self.desc_lbl.setStyleSheet(f"color: {COLORS['text_body']}; font-size: 12px; border: none;")
         
-        trigger_lbl = QLabel(f"Trigger: {trigger}")
-        trigger_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px; font-style: italic; border: none;")
+        self.trigger_lbl = QLabel(f"Trigger: {trigger}")
+        self.trigger_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px; font-style: italic; border: none;")
         
-        cl.addWidget(name_lbl)
-        cl.addWidget(desc_lbl)
-        cl.addWidget(trigger_lbl)
+        cl.addWidget(self.name_lbl)
+        cl.addWidget(self.desc_lbl)
+        cl.addWidget(self.trigger_lbl)
 
         # Pulse highlight animation state (for one-off triggers)
         self._highlight_step = 0
@@ -106,6 +106,21 @@ class CommandWidget(QFrame):
             self.setStyleSheet(self.base_style + f" border: 1px solid {COLORS['accent']};")
         
         self._highlight_step -= 1
+
+    def refresh_theme(self):
+        self.base_style = f"background: {COLORS['panel_soft']}; border-radius: 8px; border: 1px solid {COLORS['border']};"
+        self.setStyleSheet(self.base_style)
+        self._shadow.setColor(QColor(COLORS['accent']))
+        self.name_lbl.setStyleSheet(f"color: {COLORS['accent']}; font-size: 13px; font-weight: 600; border: none;")
+        self.desc_lbl.setStyleSheet(f"color: {COLORS['text_body']}; font-size: 12px; border: none;")
+        self.trigger_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px; font-style: italic; border: none;")
+        if self._glowing:
+            alpha = int(40 + 100 * (self._glow_step / 5.0))
+            glow_color = QColor(COLORS['accent'])
+            glow_color.setAlpha(alpha)
+            self._shadow.setBlurRadius(self._glow_step * 4)
+            self._shadow.setColor(glow_color)
+            self.setStyleSheet(self.base_style + f" border: 1px solid {COLORS['accent']};")
 
 class ActiveCommandsPanel(QFrame):
     def __init__(self):
@@ -223,4 +238,9 @@ class ActiveCommandsPanel(QFrame):
             cmd_widget = CommandWidget(name, desc, trigger)
             self._cmd_widgets[name] = cmd_widget
             self.commands_layout.addWidget(cmd_widget)
+
+    def refresh_theme(self):
+        self.header.setStyleSheet(f"color: {COLORS['text']}; font-size: 15px; font-weight: 600; letter-spacing: -0.1px; border: none;")
+        for cmd_widget in self._cmd_widgets.values():
+            cmd_widget.refresh_theme()
 

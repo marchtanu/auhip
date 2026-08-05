@@ -33,7 +33,17 @@ class HybridLLMRouter:
     def set_mode(self, mode: str):
         """Update current operational machine context tracking."""
         self.current_mode = mode
+        # Refresh the system message in the context window so the LLM
+        # always sees the current execution state.
+        sys_text = PromptBuilder.build_system_prompt(mode)
+        self.context_manager.refresh_system_message(sys_text)
         logger.debug(f"Hybrid router execution context transitioned to: {mode}")
+
+    async def close(self):
+        """Gracefully close provider HTTP sessions."""
+        for provider in (self.local_provider, self.cloud_provider):
+            if hasattr(provider, "close"):
+                await provider.close()
 
     async def execute(self, user_text: str) -> str:
         """
@@ -49,10 +59,8 @@ class HybridLLMRouter:
         # 1. Update working context window with system rules and new user command
         sys_text = PromptBuilder.build_system_prompt(self.current_mode)
         
-        # Ensure system instructions are present as absolute baseline context
-        current_ctx = self.context_manager.get_context()
-        if not current_ctx or current_ctx[0].role != "system":
-            self.context_manager.append(Message(role="system", content=sys_text))
+        # Ensure system instructions are present and up-to-date
+        self.context_manager.refresh_system_message(sys_text)
             
         self.context_manager.append(Message(role="user", content=prompt))
 
@@ -74,8 +82,15 @@ class HybridLLMRouter:
         else:
             logger.warning("Local engine status checks failed. Prompting direct external escalation routing.")
 
-        # 4. Layer 3 — Evaluate internal escalation boundaries
-        if not response or EscalationManager.should_escalate(response, prompt):
+        # 4. Evaluate escalation — check if local response warrants cloud fallback
+        needs_cloud = False
+        if not response or response.intent == "error":
+            needs_cloud = True
+        elif response and EscalationManager.should_escalate(response, prompt):
+            logger.info("EscalationManager recommends cloud fallback for higher-quality reasoning.")
+            needs_cloud = True
+
+        if needs_cloud:
             logger.info("Escalating reasoning request to Layer 3 cloud neural infrastructure.")
             
             # Verify status reachability before invoking external APIs
@@ -115,3 +130,4 @@ class HybridLLMRouter:
                 self.context_manager.append(Message(role="assistant", content=final_answer))
 
         return final_answer or "Execution complete."
+

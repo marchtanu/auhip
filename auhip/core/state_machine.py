@@ -209,11 +209,14 @@ class AuhipStateMachine:
             self.snap_detector.stop() # Silence snaps during voice interaction
         await event_bus.publish("SET_VISION_MODE", {"mode": "none"}) # Optimization: Stop camera hardware
         await self._publish_state("Voice Mode — How can I help?")
+        self._voice_cancel_event.clear()
         await event_bus.publish("HOME_ACTIVATED", {})
         await event_bus.publish("AUHIP_RESPONSE", {
             "text": "Voice mode activated. How can I help you, sir?",
             "type": "success",
         })
+        # Reset the snap dot UI counter to zero
+        await event_bus.publish("SNAP_DETECTED", {"time": 0, "count": 0})
 
         self._voice_cancel_event.clear()
         try:
@@ -232,7 +235,7 @@ class AuhipStateMachine:
 
                 if not text:
                     await event_bus.publish("AUHIP_RESPONSE", {
-                        "text": "I didn't catch that. Still listening...",
+                        "text": "I didn't catch that — still listening. Try speaking clearly after a short pause.",
                         "type": "info",
                     })
                     continue
@@ -284,7 +287,7 @@ class AuhipStateMachine:
                 await self._publish_state("Ready for next command.")
                 # Ensure voice loop is running if we return to voice mode
                 if not self._voice_task or self._voice_task.done():
-                    self._voice_task = asyncio.create_task(self._voice_loop())
+                    self._voice_task = asyncio.create_task(self._enter_voice_mode())
             else:
                 await self._publish_state(f"Back to {self.state.name}.")
 

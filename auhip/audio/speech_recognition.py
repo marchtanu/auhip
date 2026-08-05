@@ -1,3 +1,13 @@
+"""
+Hybrid Speech Recognition — three-tier engine stack:
+
+  Tier 1 (primary):  faster-whisper   — local, fast (~0.5s), flexible vocabulary
+  Tier 2 (fallback): Vosk             — local, instant, grammar-lockable
+  Tier 3 (last):     Google Cloud     — cloud, slowest, most accurate
+
+Engine is controlled by config.STT_ENGINE ("whisper" | "vosk" | "google").
+"""
+
 import logging
 import asyncio
 import json
@@ -5,10 +15,18 @@ import time
 import queue
 import os
 import numpy as np
+
 try:
     import vosk
 except ImportError:
     vosk = None
+
+try:
+    from faster_whisper import WhisperModel as _WhisperModel
+    _HAS_WHISPER = True
+except ImportError:
+    _HAS_WHISPER = False
+
 import speech_recognition as sr
 from ..core.config import config
 
@@ -16,212 +34,263 @@ logger = logging.getLogger(__name__)
 
 
 class SpeechRecognizer:
+    """
+    Three-tier hybrid speech recogniser.
+    Primary: faster-whisper (STT_ENGINE="whisper")
+    Fallback: Vosk offline  (STT_ENGINE="vosk")
+    Last:     Google Cloud  (STT_ENGINE="google")
+    """
+
     def __init__(self):
         self.recognizer = sr.Recognizer()
-        self.model = None
-        self.rec = None
-        self._calibrated = False
-        self._use_vosk = True  # Set to False to switch back to Google
+        self._vosk_model = None
+        self._vosk_rec   = None
+        self._whisper_model = None
+        self._whisper_rec   = None   # WhisperRecognizer wrapper
+        self._active_engine = config.STT_ENGINE  # "whisper" | "vosk" | "google"
+
+    # ── Initialisation ────────────────────────────────────────────────────────
 
     def initialize(self) -> bool:
-        if self._use_vosk:
-            try:
-                if not vosk:
-                    logger.error("Vosk module not found. Please install it: pip install vosk")
-                    self._use_vosk = False
-                    return False
-                
-                if not os.path.exists(config.VOSK_MODEL_PATH):
-                    logger.error(f"Vosk model not found at: {config.VOSK_MODEL_PATH}")
-                    self._use_vosk = False
-                    return False
-
-                logger.info(f"Loading Vosk model from: {config.VOSK_MODEL_PATH}")
-                # Vosk logging is very verbose, suppress it unless debugging
-                vosk.SetLogLevel(-1)
-                self.model = vosk.Model(config.VOSK_MODEL_PATH)
-                
-                if not self.model:
-                    logger.error("Vosk model failed to load (returned None).")
-                    self._use_vosk = False
-                    return False
-
-                self.rec = vosk.KaldiRecognizer(self.model, config.SAMPLERATE)
-                self._calibrated = True
-                logger.info("Vosk initialized successfully.")
+        """Load the configured primary engine. Falls back down the stack on failure."""
+        if self._active_engine == "whisper":
+            if self._init_whisper():
+                logger.info("Speech engine: faster-whisper ✓")
                 return True
-            except Exception as e:
-                logger.error(f"Vosk initialization failed: {e}")
-                self.model = None
-                self.rec = None
-                self._use_vosk = False
-                return False
-        return False
+            logger.warning("Whisper unavailable — falling back to Vosk.")
+            self._active_engine = "vosk"
 
-    def _listen_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None, validator: callable = None, cancel_event: asyncio.Event = None, mic=None) -> str | None:
-        if not self._use_vosk or not self.model:
-            if self._use_vosk:
-                logger.warning("Vosk requested but model not loaded. Falling back to Google.")
-            return self._listen_google_blocking(timeout, phrase_time_limit)
+        if self._active_engine == "vosk":
+            if self._init_vosk():
+                logger.info("Speech engine: Vosk ✓")
+                return True
+            logger.warning("Vosk unavailable — falling back to Google Cloud.")
+            self._active_engine = "google"
 
-        text, audio_buffer = self._listen_vosk_blocking(timeout, phrase_time_limit, grammar, cancel_event, mic)
-        
-        # Fallback Logic:
-        # If Vosk returned nothing, OR if a validator is provided and says the text isn't a valid command,
-        # we send the EXACT same audio buffer to Google Cloud to try again.
-        should_fallback = False
-        if not text:
-            should_fallback = True
-        elif validator and not validator(text):
-            logger.info(f"Vosk recognized '{text}', but it doesn't match a command. Falling back to Google...")
-            should_fallback = True
+        logger.info("Speech engine: Google Cloud STT")
+        return True  # Google always available (needs internet)
 
-        if should_fallback and audio_buffer:
-            fallback_text = self._recognize_google_from_buffer(audio_buffer)
-            if fallback_text:
-                return fallback_text
-        
-        return text
+    def _init_whisper(self) -> bool:
+        if not _HAS_WHISPER:
+            logger.error("faster-whisper not installed. Run: pip install faster-whisper")
+            return False
 
-    def _listen_vosk_blocking(self, timeout: float, phrase_time_limit: float, grammar: list = None, cancel_event: asyncio.Event = None, mic=None) -> tuple[str | None, bytes | None]:
-        """Local Vosk recognition loop. Returns (text, raw_audio_buffer)."""
+        try:
+            logger.info(
+                f"Loading faster-whisper model '{config.WHISPER_MODEL_SIZE}' "
+                f"on {config.WHISPER_DEVICE} ({config.WHISPER_COMPUTE_TYPE})..."
+            )
+            # Model is downloaded to HuggingFace cache on first run (~74 MB for 'base')
+            self._whisper_model = _WhisperModel(
+                config.WHISPER_MODEL_SIZE,
+                device=config.WHISPER_DEVICE,
+                compute_type=config.WHISPER_COMPUTE_TYPE,
+            )
+            # Warm up the model with a silent buffer so first call isn't slow
+            _silence = np.zeros(3200, dtype=np.float32)
+            list(self._whisper_model.transcribe(_silence, language="en")[0])
+            logger.info("faster-whisper ready.")
+
+            from .whisper_recognizer import WhisperRecognizer
+            self._whisper_rec = WhisperRecognizer(
+                self._whisper_model,
+                sample_rate=config.SAMPLERATE,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"faster-whisper init failed: {e}")
+            return False
+
+    def _init_vosk(self) -> bool:
+        if not vosk:
+            logger.error("Vosk module not installed.")
+            return False
+        if not os.path.exists(config.VOSK_MODEL_PATH):
+            logger.error(f"Vosk model not found at: {config.VOSK_MODEL_PATH}")
+            return False
+        try:
+            vosk.SetLogLevel(-1)
+            self._vosk_model = vosk.Model(config.VOSK_MODEL_PATH)
+            self._vosk_rec   = vosk.KaldiRecognizer(self._vosk_model, config.SAMPLERATE)
+            logger.info("Vosk ready.")
+            return True
+        except Exception as e:
+            logger.error(f"Vosk init failed: {e}")
+            return False
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    async def listen_for_command(
+        self,
+        timeout: float = 10.0,
+        phrase_time_limit: float = 10.0,
+        grammar: list = None,
+        validator: callable = None,
+        cancel_event: asyncio.Event = None,
+        mic=None,
+    ) -> str | None:
+        """
+        Async entry point — runs blocking recognition in a thread executor.
+        Returns lowercased text or None.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self._listen_blocking(timeout, phrase_time_limit, grammar, cancel_event, mic),
+        )
+
+    def process_chunk(self, audio_data) -> str | None:
+        """Streaming chunk processing for Vosk (legacy support)."""
+        if self._active_engine == "vosk" and self._vosk_rec:
+            if audio_data.dtype != np.int16:
+                audio_data = (audio_data * 32767).astype(np.int16)
+            if self._vosk_rec.AcceptWaveform(audio_data.tobytes()):
+                result = json.loads(self._vosk_rec.Result())
+                return result.get("text")
+        return None
+
+    # ── Engine dispatch ───────────────────────────────────────────────────────
+
+    def _listen_blocking(
+        self,
+        timeout: float,
+        phrase_time_limit: float,
+        grammar: list,
+        cancel_event: asyncio.Event,
+        mic,
+    ) -> str | None:
+        engine = self._active_engine
+
+        # Grammar locking only works with Vosk — fall back to Vosk for wake-word calls
+        if grammar and engine == "whisper":
+            engine = "vosk" if self._vosk_rec else "whisper"
+
+        if engine == "whisper" and self._whisper_rec:
+            return self._listen_whisper(timeout, cancel_event, mic)
+
+        if engine == "vosk" and self._vosk_model:
+            text, buf = self._listen_vosk(timeout, grammar, cancel_event, mic)
+            if not text and buf:
+                return self._google_from_buffer(buf)
+            return text
+
+        # Google-only fallback
+        return self._listen_google(timeout, phrase_time_limit)
+
+    # ── Whisper engine ────────────────────────────────────────────────────────
+
+    def _listen_whisper(
+        self,
+        timeout: float,
+        cancel_event: asyncio.Event,
+        mic,
+    ) -> str | None:
+        """Record with VAD then transcribe via faster-whisper."""
+        if not mic:
+            logger.warning("Whisper needs a shared mic stream — falling back to Google.")
+            return self._listen_google(timeout, timeout)
+
+        return self._whisper_rec.listen(mic, timeout=timeout, cancel_event=cancel_event)
+
+    # ── Vosk engine ──────────────────────────────────────────────────────────
+
+    def _listen_vosk(
+        self,
+        timeout: float,
+        grammar: list,
+        cancel_event: asyncio.Event,
+        mic,
+    ) -> tuple[str | None, bytes | None]:
         import sounddevice as sd
         audio_buffer = bytearray()
         try:
-            if not self.model:
-                logger.error("Vosk model is None in _listen_vosk_blocking")
-                return None, None
-
             if grammar:
                 grammar_json = json.dumps(grammar + ["[unk]"])
-                rec = vosk.KaldiRecognizer(self.model, config.SAMPLERATE, grammar_json)
+                rec = vosk.KaldiRecognizer(self._vosk_model, config.SAMPLERATE, grammar_json)
             else:
-                rec = self.rec
+                rec = self._vosk_rec
 
-            if not rec:
-                logger.error("Vosk recognizer (rec) is None in _listen_vosk_blocking")
-                return None, None
-
-            # Use shared mic if provided, otherwise open own stream
             if mic:
-                logger.info("Vosk is listening (shared stream)...")
                 q = mic.subscribe()
                 try:
-                    start_time = time.time()
-                    while time.time() - start_time < timeout:
+                    start = time.time()
+                    while time.time() - start < timeout:
                         if cancel_event and cancel_event.is_set():
-                            logger.info("Vosk listening cancelled by event.")
                             break
-                        
                         try:
-                            # 0.1s wait to stay responsive to cancel_event
                             data = q.get(timeout=0.1)
-                            # Convert float32 from sounddevice to int16 for Vosk
-                            if data.dtype != np.int16:
-                                data_int16 = (data * 32767).astype(np.int16)
-                            else:
-                                data_int16 = data
-                            
-                            chunk_bytes = data_int16.tobytes()
-                            audio_buffer.extend(chunk_bytes)
-                            
-                            if rec.AcceptWaveform(chunk_bytes):
-                                result = json.loads(rec.Result())
-                                text = result.get("text", "")
-                                if text:
-                                    logger.info(f'Vosk Recognized: "{text}"')
-                                    return text, bytes(audio_buffer)
                         except queue.Empty:
                             continue
+                        if data.dtype != np.int16:
+                            data = (data * 32767).astype(np.int16)
+                        chunk_bytes = data.tobytes()
+                        audio_buffer.extend(chunk_bytes)
+                        if rec.AcceptWaveform(chunk_bytes):
+                            result = json.loads(rec.Result())
+                            text = result.get("text", "")
+                            if text:
+                                logger.info(f"Vosk: '{text}'")
+                                return text, bytes(audio_buffer)
                 finally:
                     mic.unsubscribe(q)
             else:
-                # Fallback to creating own stream (not recommended if shared mic exists)
-                with sd.RawInputStream(samplerate=config.SAMPLERATE, blocksize=8000, dtype='int16',
-                                    channels=1, device=config.MIC_DEVICE_INDEX) as stream:
-                    logger.info("Vosk is listening (dedicated stream)...")
-                    start_time = time.time()
-                    while time.time() - start_time < timeout:
+                with sd.RawInputStream(
+                    samplerate=config.SAMPLERATE, blocksize=8000,
+                    dtype='int16', channels=1, device=config.MIC_DEVICE_INDEX
+                ) as stream:
+                    start = time.time()
+                    while time.time() - start < timeout:
                         if cancel_event and cancel_event.is_set():
-                            logger.info("Vosk listening cancelled by event.")
                             break
-                        
-                        data, overflowed = stream.read(4000)
+                        data, _ = stream.read(4000)
                         audio_buffer.extend(data)
-                        
                         if rec.AcceptWaveform(bytes(data)):
                             result = json.loads(rec.Result())
                             text = result.get("text", "")
                             if text:
-                                logger.info(f'Vosk Recognized: "{text}"')
+                                logger.info(f"Vosk: '{text}'")
                                 return text, bytes(audio_buffer)
 
-            # Final check after timeout
             result = json.loads(rec.FinalResult())
             text = result.get("text", "")
             if text:
-                logger.info(f'Vosk Recognized (Final): "{text}"')
-            return (text if text else None), bytes(audio_buffer)
-                
+                logger.info(f"Vosk (Final): '{text}'")
+            return (text or None), bytes(audio_buffer)
+
         except Exception as e:
-            logger.error(f"Vosk recognition error: {e}")
+            logger.error(f"Vosk error: {e}")
         return None, bytes(audio_buffer)
 
-    def _recognize_google_from_buffer(self, buffer: bytes) -> str | None:
-        """Fallback: Process already-captured audio through Google Cloud STT."""
+    # ── Google Cloud engine ───────────────────────────────────────────────────
+
+    def _google_from_buffer(self, buffer: bytes) -> str | None:
         try:
-            logger.info("Requesting Google Cloud fallback recognition...")
-            # Vosk uses int16, which is 2 bytes per sample
+            logger.info("Google Cloud fallback recognition...")
             audio_data = sr.AudioData(buffer, config.SAMPLERATE, 2)
             text = self.recognizer.recognize_google(audio_data).lower()
-            logger.info(f"Google Fallback Recognized: '{text}'")
+            logger.info(f"Google: '{text}'")
             return text
         except sr.UnknownValueError:
-            logger.debug("Google fallback also failed to understand audio.")
+            logger.debug("Google fallback: could not understand audio.")
         except Exception as e:
             logger.error(f"Google fallback error: {e}")
         return None
 
-    def _listen_google_blocking(self, timeout: float, phrase_time_limit: float) -> str | None:
-        """Original Google Cloud recognition method."""
+    def _listen_google(self, timeout: float, phrase_time_limit: float) -> str | None:
         try:
             with sr.Microphone(device_index=config.MIC_DEVICE_INDEX) as source:
                 audio = self.recognizer.listen(
                     source, timeout=timeout, phrase_time_limit=phrase_time_limit
                 )
             text = self.recognizer.recognize_google(audio).lower()
-            logger.info(f'Google Recognized: "{text}"')
+            logger.info(f"Google direct: '{text}'")
             return text
         except sr.WaitTimeoutError:
-            logger.info("Listening timed out.")
+            logger.info("Google: listening timed out.")
         except sr.UnknownValueError:
-            logger.warning("Could not understand audio.")
+            logger.warning("Google: could not understand audio.")
         except sr.RequestError as e:
             logger.error(f"Google API error: {e}")
         except Exception as e:
-            logger.error(f"Recognition error: {e}")
-        return None
-
-    async def listen_for_command(
-        self, timeout: float = 10.0, phrase_time_limit: float = 10.0, grammar: list = None, validator: callable = None, cancel_event: asyncio.Event = None, mic=None
-    ) -> str | None:
-        """
-        Listens for a command. 
-        If mic is provided, it uses the shared stream.
-        """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self._listen_blocking(timeout, phrase_time_limit, grammar, validator, cancel_event, mic)
-        )
-
-    def process_chunk(self, audio_data) -> str | None:
-        """Used for streaming recognition if the audio loop feeds chunks directly."""
-        if self._use_vosk and self.rec:
-            # Convert float32 to int16 if necessary
-            if audio_data.dtype != np.int16:
-                audio_data = (audio_data * 32767).astype(np.int16)
-            
-            if self.rec.AcceptWaveform(audio_data.tobytes()):
-                result = json.loads(self.rec.Result())
-                return result.get("text")
+            logger.error(f"Google error: {e}")
         return None

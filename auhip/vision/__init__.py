@@ -1,0 +1,1 @@
+# auhip vision package namespace

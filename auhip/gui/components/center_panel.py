@@ -19,26 +19,26 @@ class CenterPanel(QWidget):
         layout.setSpacing(14)
 
         # Audio waveform card
-        wave_card = QFrame()
-        wave_card.setStyleSheet(
+        self.wave_card = QFrame()
+        self.wave_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
             "border-radius: 12px; }"
         )
-        wave_card.setFixedHeight(100)
-        wl = QVBoxLayout(wave_card)
+        self.wave_card.setFixedHeight(100)
+        wl = QVBoxLayout(self.wave_card)
         wl.setContentsMargins(16, 10, 16, 10)
         wl.setSpacing(4)
 
-        wave_header = QLabel("Audio input")
-        wave_header.setStyleSheet(
+        self.wave_header = QLabel("Audio input")
+        self.wave_header.setStyleSheet(
             f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 500;"
             "letter-spacing: 0.3px; text-transform: uppercase; border: none;"
         )
-        wl.addWidget(wave_header)
+        wl.addWidget(self.wave_header)
 
         self.waveform = WaveformWidget()
         wl.addWidget(self.waveform, 1)
-        layout.addWidget(wave_card)
+        layout.addWidget(self.wave_card)
 
         # Vision Panel (Hidden by default)
         self.vision_panel = VisionPanel()
@@ -58,41 +58,74 @@ class CenterPanel(QWidget):
         split_layout.setSpacing(14)
 
         # Transcript card
-        transcript_card = QFrame()
-        transcript_card.setStyleSheet(
+        self.transcript_card = QFrame()
+        self.transcript_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
             "border-radius: 12px; }"
         )
-        tl = QVBoxLayout(transcript_card)
+        tl = QVBoxLayout(self.transcript_card)
         tl.setContentsMargins(16, 16, 16, 16)
         tl.setSpacing(10)
-        t_header = QLabel("Live transcript")
-        t_header.setStyleSheet(
+        self.t_header = QLabel("Live transcript")
+        self.t_header.setStyleSheet(
             f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
-        tl.addWidget(t_header)
+        tl.addWidget(self.t_header)
         self.transcript = TranscriptPanel()
         tl.addWidget(self.transcript, 1)
-        split_layout.addWidget(transcript_card, 1)
+        split_layout.addWidget(self.transcript_card, 1)
 
         # Response card
-        response_card = QFrame()
-        response_card.setStyleSheet(
+        self.response_card = QFrame()
+        self.response_card.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel_soft']}; border: 1px solid {COLORS['border']};"
             "border-radius: 12px; }"
         )
-        rl = QVBoxLayout(response_card)
+        rl = QVBoxLayout(self.response_card)
         rl.setContentsMargins(16, 16, 16, 16)
         rl.setSpacing(10)
-        r_header = QLabel("auhip response")
-        r_header.setStyleSheet(
+        self.r_header = QLabel("auhip response")
+        self.r_header.setStyleSheet(
             f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
-        rl.addWidget(r_header)
+        rl.addWidget(self.r_header)
         self.response = ResponsePanel()
         rl.addWidget(self.response, 1)
-        split_layout.addWidget(response_card, 1)
+        split_layout.addWidget(self.response_card, 1)
 
         layout.addWidget(split, 1)
+
+    def refresh_theme(self, dark: bool = False):
+        """Re-apply styles after a theme switch."""
+        self.wave_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }"
+        )
+        self.wave_header.setStyleSheet(
+            f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 500;"
+            "letter-spacing: 0.3px; text-transform: uppercase; border: none;"
+        )
+        self.transcript_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }"
+        )
+        self.t_header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        self.response_card.setStyleSheet(
+            f"QFrame {{ background: {COLORS['panel_soft']}; border: 1px solid {COLORS['border']};"
+            "border-radius: 12px; }"
+        )
+        self.r_header.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            "letter-spacing: -0.1px; border: none;"
+        )
+        
+        self.waveform.update()
+        self.vision_panel.refresh_theme()
+        self.transcript.refresh_theme()
+        self.response.refresh_theme()
+

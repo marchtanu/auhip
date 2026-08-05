@@ -32,3 +32,17 @@ class ResponsePanel(QWidget):
             f'<br>'
         )
         self._text.moveCursor(QTextCursor.MoveOperation.End)
+
+    def refresh_theme(self):
+        """Re-apply styles after a theme switch."""
+        self._text.setStyleSheet(f"""
+            QTextEdit {{
+                background: transparent;
+                border: none;
+                color: {COLORS['text_body']};
+                font-size: 14px;
+                line-height: 1.55;
+                padding: 0;
+            }}
+        """)
+

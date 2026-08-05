@@ -7,14 +7,16 @@ from auhip.gui.theme import COLORS
 from auhip.core.event_bus import event_bus
 
 
-# Map event labels to a display-friendly short name + colour
-COMMAND_STYLE = {
-    "▲ Volume Up":    COLORS["success"],
-    "▼ Volume Down":  COLORS["warning"],
-    "⏭⏭ Next Track":   COLORS["accent"],
-    "⏮⏮ Prev Track":   COLORS["accent"],
-    "⏯ Play / Pause": COLORS["accent_yellow"],
-}
+def get_command_color(label: str) -> str:
+    if "Volume Up" in label:
+        return COLORS["success"]
+    elif "Volume Down" in label:
+        return COLORS["warning"]
+    elif "Next Track" in label or "Prev Track" in label:
+        return COLORS["accent"]
+    elif "Play / Pause" in label or "Media" in label:
+        return COLORS["accent_yellow"]
+    return COLORS["accent"]
 
 
 class LastCommandWidget(QWidget):
@@ -59,7 +61,7 @@ class LastCommandWidget(QWidget):
 
     async def _on_last_command(self, data: dict):
         label = data.get("label", "")
-        color = COMMAND_STYLE.get(label, COLORS["accent"])
+        color = get_command_color(label)
         self._show(label, color)
 
     async def _on_command_executed(self, data: dict):
@@ -105,3 +107,25 @@ class LastCommandWidget(QWidget):
             self._lbl.setStyleSheet(
                 f"color: {COLORS['text_muted']}; font-size: 13px; border: none;"
             )
+
+    def refresh_theme(self):
+        """Re-apply styles after a theme switch."""
+        self._color = COLORS["accent"]
+        if self._label_text and self._label_text != "—":
+            self._color = get_command_color(self._label_text)
+            opacity = max(30, int(255 * self._alpha))
+            hex_opacity = f"{opacity:02x}"
+            base = self._color.lstrip("#")
+            faded = f"#{base}{hex_opacity}" if len(base) == 6 else self._color
+            self._lbl.setStyleSheet(
+                f"color: {faded}; font-size: 13px; font-weight: 500; border: none;"
+            )
+            self._dot.setStyleSheet(f"color: {faded}; font-size: 10px; border: none;")
+        else:
+            self._dot.setStyleSheet(
+                f"color: {COLORS['border']}; font-size: 10px; border: none;"
+            )
+            self._lbl.setStyleSheet(
+                f"color: {COLORS['text_muted']}; font-size: 13px; border: none;"
+            )
+
