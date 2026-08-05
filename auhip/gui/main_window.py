@@ -14,11 +14,12 @@ from auhip.gui.components.debug_panel import DebugPanel
 
 
 class AuhipMainWindow(QMainWindow):
-    def __init__(self, fsm, mic=None, vision_worker=None):
+    def __init__(self, fsm, mic=None, vision_worker=None, hide_on_standby=False):
         super().__init__()
         self._fsm = fsm
         self._vision_worker = vision_worker
         self._dark_mode = False
+        self.hide_on_standby = hide_on_standby
 
         self.setWindowTitle("auhip")
         self.setMinimumSize(1200, 760)
@@ -133,8 +134,9 @@ class AuhipMainWindow(QMainWindow):
         self.left_panel.state_panel.set_state(state, label, data.get("message", ""))
         self.nav_bar.set_status(label, color)
 
-        if state == "STANDBY":
+        if state == "STANDBY" and self.hide_on_standby:
             self.hide()
+
 
     async def _on_mode_changed(self, data: dict):
         mode = data.get("mode", "")

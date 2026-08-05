@@ -55,14 +55,14 @@ class SpeechRecognizer:
         """Load the configured primary engine. Falls back down the stack on failure."""
         if self._active_engine == "whisper":
             if self._init_whisper():
-                logger.info("Speech engine: faster-whisper ✓")
+                logger.info("Speech engine: faster-whisper [OK]")
                 return True
             logger.warning("Whisper unavailable — falling back to Vosk.")
             self._active_engine = "vosk"
 
         if self._active_engine == "vosk":
             if self._init_vosk():
-                logger.info("Speech engine: Vosk ✓")
+                logger.info("Speech engine: Vosk [OK]")
                 return True
             logger.warning("Vosk unavailable — falling back to Google Cloud.")
             self._active_engine = "google"

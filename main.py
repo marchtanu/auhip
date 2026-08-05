@@ -52,8 +52,8 @@ async def audio_loop(mic: Microphone, snap_detector: SnapDetector,
         logger.info("Audio loop stopped.")
 
 
-async def main():
-    logger.info("Starting auhip Assistant...")
+async def main(mode="direct"):
+    logger.info(f"Starting auhip Assistant in '{mode.upper()}' mode...")
 
     # ── Initialize Components ─────────────────────────────────────────────
     mic = Microphone()
@@ -65,11 +65,16 @@ async def main():
     vision_worker = VisionWorker()
 
     # ── Build GUI ─────────────────────────────────────────────────────────
-    window = AuhipMainWindow(fsm, mic, vision_worker)
-    window.hide()  # GUI activates on "daddy home" command
-
-    # ── Start FSM ─────────────────────────────────────────────────────────
-    await fsm.start()
+    hide_on_standby = (mode == "standby")
+    window = AuhipMainWindow(fsm, mic, vision_worker, hide_on_standby=hide_on_standby)
+    
+    if mode == "direct":
+        window.show()  # Display GUI window immediately on launch
+        await fsm.start()
+        await fsm._enter_voice_mode()  # Method 1: Auto-activate Voice Mode & Text Input
+    else:
+        window.hide()  # Method 2: Hidden background listener mode
+        await fsm.start()  # Wait in STANDBY for snaps / wake phrase
 
     # ── Calibrate mic (non-blocking) ──────────────────────────────────────
     loop = asyncio.get_event_loop()
@@ -83,6 +88,7 @@ async def main():
     window.debug_panel.set_mic_instance(mic)
 
     logger.info("auhip is ready.")
+    logger.info(f"  Mode           : '{mode}'")
     logger.info(f"  Wake phrase    : '{config.WAKE_PHRASE}'")
     logger.info(f"  Shutdown phrase: '{config.SHUTDOWN_PHRASE}'")
 
@@ -102,6 +108,16 @@ async def main():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="AUHIP Personal Assistant")
+    parser.add_argument("--mode", choices=["direct", "standby"], default="direct",
+                        help="Startup mode: 'direct' (GUI + auto-activate) or 'standby' (hidden background snap listener)")
+    parser.add_argument("--direct", action="store_true", help="Method 1: Direct interactive GUI mode")
+    parser.add_argument("--standby", action="store_true", help="Method 2: Standby snap/voice listener mode")
+    
+    args, unknown = parser.parse_known_args()
+    selected_mode = "standby" if args.standby else ("direct" if args.direct else args.mode)
+
     app = QApplication(sys.argv)
     app.setApplicationName("auhip Assistant")
 
@@ -110,7 +126,7 @@ if __name__ == "__main__":
 
     with loop:
         try:
-            loop.run_until_complete(main())
+            loop.run_until_complete(main(selected_mode))
         except KeyboardInterrupt:
             logger.info("Interrupted.")
         finally:

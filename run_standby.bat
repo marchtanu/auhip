@@ -1,22 +1,17 @@
 @echo off
-title AUHIP Launcher (Ollama + Main)
+title AUHIP Assistant — Method 2 (Background Snap/Voice Standby)
 
 echo ===================================================
-echo Starting AUHIP Assistant with Ollama Server
+echo Starting AUHIP Assistant (Method 2: Standby Listener Mode)
+echo Waits in background for double-snap or "daddy home"
 echo ===================================================
 
 echo.
-echo [1/2] Starting Ollama server in the background...
-start /b ollama serve
-
-echo.
-echo [2/2] Launching AUHIP main application...
 if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
 )
-python main.py
+python main.py --standby
 
 echo.
 echo AUHIP application closed.
 pause
-

@@ -163,6 +163,40 @@ class DebugPanel(QWidget):
         skill_layout.addWidget(self._exec_btn)
         btn_layout_outer.addWidget(skill_container)
 
+        # 3.5 Text Command Row — Direct keyboard input for noisy environments
+        cmd_container = QWidget()
+        cmd_layout = QHBoxLayout(cmd_container)
+        cmd_layout.setContentsMargins(0, 0, 0, 0)
+        cmd_layout.setSpacing(6)
+
+        self.cmd_lbl = QLabel("Command")
+        self.cmd_lbl.setFixedWidth(50)
+        self.cmd_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
+        cmd_layout.addWidget(self.cmd_lbl)
+
+        self._text_cmd_input = QLineEdit()
+        self._text_cmd_input.setPlaceholderText("Type command (e.g. tell time, get weather, volume up, open browser)...")
+        self._text_cmd_input.setStyleSheet(
+            f"background: {COLORS['border_dark']}; border: 1px solid {COLORS['border_dark']};"
+            f"border-radius: 4px; color: {COLORS['text_on_dark']}; font-size: 11px; padding: 2px 8px;"
+        )
+        self._text_cmd_input.returnPressed.connect(self._send_text_cmd)
+        cmd_layout.addWidget(self._text_cmd_input, 1)
+
+        self._send_cmd_btn = QPushButton("Send")
+        self._send_cmd_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['accent']}; border: none;
+                border-radius: 4px; color: white;
+                padding: 2px 12px; font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent_hover']}; }}
+        """)
+        self._send_cmd_btn.clicked.connect(self._send_text_cmd)
+        cmd_layout.addWidget(self._send_cmd_btn)
+
+        btn_layout_outer.addWidget(cmd_container)
+
         # 4. Settings Row — Wake phrase config
         cfg_container = QWidget()
         cfg_layout = QHBoxLayout(cfg_container)
@@ -199,7 +233,7 @@ class DebugPanel(QWidget):
             QPushButton:hover {{ background-color: {COLORS['accent_hover']}; }}
         """)
         self.save_btn.clicked.connect(self._apply_wake_phrase)
-        cfg_layout.addWidget(save_btn)
+        cfg_layout.addWidget(self.save_btn)
 
         cfg_layout.addStretch()
         btn_layout_outer.addWidget(cfg_container)
@@ -230,7 +264,7 @@ class DebugPanel(QWidget):
         self.log_title.setStyleSheet(
             f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; letter-spacing: 0.3px;"
         )
-        log_layout.addWidget(log_title)
+        log_layout.addWidget(self.log_title)
 
         self._log = QTextEdit()
         self._log.setReadOnly(True)
@@ -347,6 +381,27 @@ class DebugPanel(QWidget):
             func = self._fsm.agent.available_tools.get(func_name)
             if func:
                 self._run_async(func())
+
+    def _send_text_cmd(self):
+        text = self._text_cmd_input.text().strip()
+        if text:
+            self._log_event(f"Text Cmd: '{text}'")
+            self._text_cmd_input.clear()
+            self._run_async(event_bus.publish("SPEECH_RECOGNIZED", {"text": text}))
+            self._run_async(self._execute_text_cmd(text))
+
+    async def _execute_text_cmd(self, text: str):
+        if hasattr(self._fsm, 'agent') and self._fsm.agent:
+            response = await self._fsm.agent.execute(text)
+            if response:
+                await event_bus.publish("AUHIP_RESPONSE", {
+                    "text": response,
+                    "type": "success"
+                })
+                await event_bus.publish("COMMAND_EXECUTED", {
+                    "command": text,
+                    "response": response
+                })
 
     async def _on_mode_changed_event(self, data: dict):
         self._update_ui_states()

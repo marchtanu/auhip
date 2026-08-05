@@ -1,8 +1,11 @@
 user
 venv
-__pycache__
+.venv
+__pycache__/
+*.pyc
 .env
 skills
 .env.example
 jarvis.log
-.pytest_cache
+auhip.log
+.pytest_cache
