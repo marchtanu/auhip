@@ -18,8 +18,8 @@ class TranscriptPanel(QWidget):
                 background: transparent;
                 border: none;
                 color: {COLORS['text_body']};
-                font-size: 14px;
-                line-height: 1.55;
+                font-size: 13px;
+                line-height: 1.6;
                 padding: 0;
             }}
         """)
@@ -27,18 +27,23 @@ class TranscriptPanel(QWidget):
 
     def add_text(self, text: str, speaker: str = "USER"):
         if speaker == "USER":
-            tag_color = COLORS["accent"]
+            badge_bg = COLORS["accent_dim"] if "accent_dim" in COLORS else COLORS["border"]
+            badge_color = COLORS["accent"]
             text_color = COLORS["text"]
+            speaker_name = "YOU"
         else:
-            tag_color = COLORS["text_soft"]
-            text_color = COLORS["text_muted"]
+            badge_bg = COLORS["panel_soft"]
+            badge_color = COLORS["text_muted"]
+            text_color = COLORS["text_body"]
+            speaker_name = "AUHIP"
 
         self._text.append(
-            f'<span style="color:{tag_color}; font-size:11px; font-weight:500; '
-            f'letter-spacing:0.5px;">{speaker}</span>'
-            f'<br>'
-            f'<span style="color:{text_color}; font-size:14px;">{text}</span>'
-            f'<br>'
+            f'<div style="margin-bottom: 12px;">'
+            f'<span style="color: {badge_color}; background-color: {badge_bg}; '
+            f'font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; '
+            f'letter-spacing: 0.5px;">{speaker_name}</span>'
+            f'<div style="margin-top: 6px; color: {text_color}; font-size: 13px; line-height: 1.5;">{text}</div>'
+            f'</div>'
         )
         self._text.moveCursor(QTextCursor.MoveOperation.End)
 
@@ -49,9 +54,10 @@ class TranscriptPanel(QWidget):
                 background: transparent;
                 border: none;
                 color: {COLORS['text_body']};
-                font-size: 14px;
-                line-height: 1.55;
+                font-size: 13px;
+                line-height: 1.6;
                 padding: 0;
             }}
         """)
+
 

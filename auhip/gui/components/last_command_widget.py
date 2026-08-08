@@ -29,6 +29,7 @@ class LastCommandWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("background: transparent; border: none;")
         self._label_text  = ""
         self._alpha       = 0.0          # 0 = invisible, 1 = fully opaque
         self._fade_step   = 0
@@ -39,16 +40,16 @@ class LastCommandWidget(QWidget):
         layout.setSpacing(6)
 
         self._dot = QLabel("●")
-        self._dot.setStyleSheet(f"color: {COLORS['accent']}; font-size: 10px; border: none;")
+        self._dot.setStyleSheet(f"color: {COLORS['accent']}; font-size: 10px; border: none; background: transparent;")
 
         self._lbl = QLabel("—")
         self._lbl.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 13px; font-weight: 500; border: none;"
+            f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none; background: transparent;"
         )
 
         layout.addWidget(self._dot)
         layout.addWidget(self._lbl)
-        layout.addStretch()
+
 
         # Fade timer
         self._fade_timer = QTimer(self)

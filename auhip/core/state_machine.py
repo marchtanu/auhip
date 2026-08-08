@@ -121,6 +121,11 @@ class AuhipStateMachine:
         if hasattr(self.agent, "set_mode"):
             self.agent.set_mode(self.state.name)
 
+        if self.state in (State.STANDBY, State.SLEEP):
+            from .memory_utils import trim_memory
+            trim_memory()
+
+
     # ── Snap Detection ────────────────────────────────────────────────────────
 
     async def on_snap_detected(self, data: dict):

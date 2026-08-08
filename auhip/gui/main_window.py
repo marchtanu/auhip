@@ -43,8 +43,9 @@ class AuhipMainWindow(QMainWindow):
         body = QWidget()
         body.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
         body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(20, 20, 20, 20)
-        body_layout.setSpacing(16)
+        body_layout.setContentsMargins(12, 12, 12, 10)
+        body_layout.setSpacing(12)
+
 
         self.left_panel = LeftPanel()
         body_layout.addWidget(self.left_panel)

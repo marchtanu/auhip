@@ -38,12 +38,14 @@ class VisionWorker(QObject):
         super().__init__()
         self.camera              = Camera(fps=fps)
         self.calibration_manager = CalibrationManager()
-        self.eye_tracker         = EyeTracker()
-        self.blink_detector      = BlinkDetector()
-        self.gaze_estimator      = GazeEstimator(self.calibration_manager)
-        self.attention_engine    = AttentionEngine()
+        
+        # Deferred model instances for memory savings
+        self.eye_tracker         = None
+        self.blink_detector      = None
+        self.gaze_estimator      = None
+        self.attention_engine    = None
 
-        self.hand_tracker   = HandTracker()
+        self.hand_tracker   = None
         self.gesture_engine = GestureEngine()
         self.motion_engine  = MotionEngine()
 
@@ -53,6 +55,7 @@ class VisionWorker(QObject):
 
         # Active vision mode — controlled by SET_VISION_MODE event
         self._vision_mode = self.MODE_NONE
+
 
         # Control mode state
         self._cursor_pos   = None
@@ -109,9 +112,33 @@ class VisionWorker(QObject):
         self.enable_hand_tracking = data.get("state", True)
         logger.info(f"Hand tracking: {self.enable_hand_tracking}")
 
+    def _ensure_models_loaded(self):
+        """Instantiate MediaPipe models on demand to save baseline RAM."""
+        if self.enable_hand_tracking and self.hand_tracker is None:
+            self.hand_tracker = HandTracker()
+            logger.info("HandTracker initialized on demand.")
+        if self.enable_eye_tracking and self.eye_tracker is None:
+            self.eye_tracker = EyeTracker()
+            self.blink_detector = BlinkDetector()
+            self.gaze_estimator = GazeEstimator(self.calibration_manager)
+            self.attention_engine = AttentionEngine()
+            logger.info("Eye tracking models initialized on demand.")
+
+    def unload_models(self):
+        """Release MediaPipe model instances and trim memory."""
+        self.hand_tracker = None
+        self.eye_tracker = None
+        self.blink_detector = None
+        self.gaze_estimator = None
+        self.attention_engine = None
+        from auhip.core.memory_utils import trim_memory
+        trim_memory()
+        logger.info("Vision models unloaded from RAM.")
+
     def _on_set_multi_hand(self, data: dict):
         state = data.get("state", False) # False = single, True = dual
-        self.hand_tracker.set_max_hands(2 if state else 1)
+        if self.hand_tracker:
+            self.hand_tracker.set_max_hands(2 if state else 1)
         logger.info(f"Multi-hand tracking: {state}")
 
     def _on_set_vision_mode(self, data: dict):
@@ -140,8 +167,9 @@ class VisionWorker(QObject):
         if mode == self.MODE_NONE:
             if self.running:
                 self.stop()
+            self.unload_models()
         elif mode == self.MODE_SLEEP:
-            # Low-power mode for emergency gesture detection
+            self._ensure_models_loaded()
             self.interval_ms = 100 # 10 FPS
             if not self.running:
                 self.start()
@@ -149,11 +177,13 @@ class VisionWorker(QObject):
                 self.timer.setInterval(self.interval_ms)
         else:
             # Active modes (Camera/Control)
+            self._ensure_models_loaded()
             self.interval_ms = 33 # ~30 FPS
             if not self.running:
                 self.start()
             else:
                 self.timer.setInterval(self.interval_ms)
+
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

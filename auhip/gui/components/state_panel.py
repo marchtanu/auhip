@@ -1,7 +1,7 @@
 import math
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPainter, QColor, QFont
+from PyQt6.QtGui import QPainter, QColor, QFont, QRadialGradient
 from auhip.gui.theme import COLORS, STATE_COLORS
 
 
@@ -50,18 +50,17 @@ class StatePanel(QWidget):
         # Breathing glow ring (subtle, only on active states)
         if self._state_name in ("VOICE_MODE", "CAMERA_MODE", "CONTROL_MODE", "PROCESSING",
                                  "SNAP_DETECTED", "WAITING_WAKE_WORD", "COMMAND_MODE"):
-            glow_alpha = int(18 + 14 * math.sin(self._pulse))
-            glow_r = 22
+            glow_alpha = int(22 + 18 * math.sin(self._pulse))
+            glow_r = 24
             glow_color = QColor(base)
             glow_color.setAlpha(glow_alpha)
-            from PyQt6.QtGui import QRadialGradient
-            grad = QRadialGradient(cx, 28, glow_r + 8)
+            grad = QRadialGradient(cx, 28, glow_r + 10)
             grad.setColorAt(0, glow_color)
             grad.setColorAt(1, QColor(0, 0, 0, 0))
             painter.setBrush(grad)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(cx - glow_r - 8, 28 - glow_r - 8,
-                                (glow_r + 8) * 2, (glow_r + 8) * 2)
+            painter.drawEllipse(cx - glow_r - 10, 28 - glow_r - 10,
+                                (glow_r + 10) * 2, (glow_r + 10) * 2)
 
         # Dot indicator
         dot_r = 9
@@ -71,17 +70,21 @@ class StatePanel(QWidget):
         painter.drawEllipse(cx - dot_r - pulse_bump, 28 - dot_r - pulse_bump,
                             (dot_r + pulse_bump) * 2, (dot_r + pulse_bump) * 2)
 
-        # State name
+        # State name font (using setPixelSize to avoid QFont warnings)
         painter.setPen(QColor(COLORS["text"]))
-        font = QFont("Inter", 16, QFont.Weight.Bold)
+        font = QFont("Inter")
+        font.setPixelSize(15)
+        font.setWeight(QFont.Weight.Bold)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, -0.3)
         painter.setFont(font)
         painter.drawText(0, 56, w, 24, Qt.AlignmentFlag.AlignHCenter, self._state_label)
 
         # Message
         painter.setPen(QColor(COLORS["text_muted"]))
-        font2 = QFont("Inter", 12)
+        font2 = QFont("Inter")
+        font2.setPixelSize(12)
         painter.setFont(font2)
         painter.drawText(10, 84, w - 20, 48,
                          Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap,
                          self._message)
+

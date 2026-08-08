@@ -1,80 +1,87 @@
 from datetime import datetime
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from auhip.gui.theme import COLORS
 from .last_command_widget import LastCommandWidget
+
 
 
 class NavBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(44)
+        self.setFixedHeight(40)
         self._apply_style()
         self._build_ui()
 
     def _apply_style(self):
-        self.setStyleSheet(
-            f"background: {COLORS['surface']}; "
-            f"border-bottom: 1px solid {COLORS['border']}; "
-            "border-radius: 0;"
-        )
+        self.setObjectName("NavBar")
+        self.setStyleSheet(f"""
+            #NavBar {{
+                background: {COLORS['surface']};
+                border-bottom: 1px solid {COLORS['border']};
+                border-radius: 0px;
+            }}
+            #NavBar QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        """)
 
     def _build_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 0, 20, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setSpacing(8)
 
         # Wordmark icon
         self._mark = QLabel("✦")
-        self._mark.setStyleSheet(f"color: {COLORS['accent']}; font-size: 16px; border: none;")
+        self._mark.setStyleSheet(f"color: {COLORS['accent']}; font-size: 14px; border: none; background: transparent;")
         layout.addWidget(self._mark)
 
         # App title
         self._title = QLabel("auhip")
         self._title.setStyleSheet(
-            f"color: {COLORS['text']}; font-size: 13px; font-weight: 600;"
-            "letter-spacing: -0.1px; border: none;"
+            f"color: {COLORS['text']}; font-size: 13px; font-weight: 700; "
+            "letter-spacing: -0.2px; border: none; background: transparent;"
         )
         layout.addWidget(self._title)
-        layout.addStretch()
 
-        # Last activated command indicator
+        # Sub-version pill badge
+        self._ver_badge = QLabel("v2.4 OS")
+        self._ver_badge.setStyleSheet(
+            f"color: {COLORS['text_soft']}; font-size: 10px; font-weight: 600; "
+            f"background: transparent; border: 1px solid {COLORS['border_soft']}; "
+            "padding: 1px 5px; border-radius: 4px;"
+        )
+        layout.addWidget(self._ver_badge)
+
+        # Stretch before center
+        layout.addStretch(1)
+
+        # Last activated command indicator (centered)
         self._last_cmd_widget = LastCommandWidget()
         layout.addWidget(self._last_cmd_widget)
 
-        # Separator
-        self._sep = QLabel("│")
-        self._sep.setStyleSheet(
-            f"color: {COLORS['border_dark']}; font-size: 14px; border: none; margin: 0 6px;"
-        )
-        layout.addWidget(self._sep)
+        # Stretch after center
+        layout.addStretch(1)
 
         # Status badge
         self._status_badge = QLabel("● Standby")
         self._status_badge.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 12px; border: none;"
+            f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none; background: transparent;"
         )
         layout.addWidget(self._status_badge)
 
-        # Dark mode toggle button
-        self._theme_btn = QPushButton("🌙")
-        self._theme_btn.setFixedSize(32, 28)
-        self._theme_btn.setStyleSheet(
-            f"background: {COLORS['panel_soft']}; "
-            f"border: 1px solid {COLORS['border']}; "
-            "border-radius: 6px; "
-            "font-size: 14px; "
-            "padding: 0; "
-            "margin-left: 8px;"
+        # Separator
+        self._sep = QLabel("│")
+        self._sep.setStyleSheet(
+            f"color: {COLORS['border']}; font-size: 12px; border: none; background: transparent; margin: 0 2px;"
         )
-        self._theme_btn.setToolTip("Toggle dark / light mode")
-        self._theme_btn.clicked.connect(self._on_theme_toggle)
-        layout.addWidget(self._theme_btn)
+        layout.addWidget(self._sep)
 
         # Clock
         self._clock_label = QLabel()
         self._clock_label.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 12px; border: none; margin-left: 8px;"
+            f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none; background: transparent;"
         )
         self._update_clock()
 
@@ -83,12 +90,33 @@ class NavBar(QWidget):
         self._clock_timer.start(1000)
         layout.addWidget(self._clock_label)
 
+        # Dark mode toggle button
+        self._theme_btn = QPushButton("🌙")
+        self._theme_btn.setFixedSize(28, 24)
+        self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor if hasattr(Qt, 'CursorShape') else Qt.PointingHandCursor)
+        self._theme_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {COLORS['border']};
+                border-radius: 5px;
+                font-size: 12px;
+                padding: 0;
+                margin-left: 4px;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['panel_soft']};
+            }}
+        """)
+        self._theme_btn.setToolTip("Toggle dark / light mode")
+        self._theme_btn.clicked.connect(self._on_theme_toggle)
+        layout.addWidget(self._theme_btn)
+
     def _update_clock(self):
         self._clock_label.setText(datetime.now().strftime("%H:%M"))
 
     def set_status(self, label: str, color: str):
         self._status_badge.setText(f"● {label}")
-        self._status_badge.setStyleSheet(f"color: {color}; font-size: 12px; border: none;")
+        self._status_badge.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 500; border: none; background: transparent;")
 
     def _on_theme_toggle(self):
         import asyncio
@@ -98,26 +126,39 @@ class NavBar(QWidget):
     def refresh_theme(self, dark: bool):
         """Re-apply styles after a theme switch."""
         self._apply_style()
-        self._mark.setStyleSheet(f"color: {COLORS['accent']}; font-size: 16px; border: none;")
+        self._mark.setStyleSheet(f"color: {COLORS['accent']}; font-size: 14px; border: none; background: transparent;")
         self._title.setStyleSheet(
-            f"color: {COLORS['text']}; font-size: 13px; font-weight: 600;"
-            "letter-spacing: -0.1px; border: none;"
+            f"color: {COLORS['text']}; font-size: 13px; font-weight: 700; "
+            "letter-spacing: -0.2px; border: none; background: transparent;"
+        )
+        self._ver_badge.setStyleSheet(
+            f"color: {COLORS['text_soft']}; font-size: 10px; font-weight: 600; "
+            f"background: transparent; border: 1px solid {COLORS['border_soft']}; "
+            "padding: 1px 5px; border-radius: 4px;"
         )
         self._sep.setStyleSheet(
-            f"color: {COLORS['border_dark']}; font-size: 14px; border: none; margin: 0 6px;"
+            f"color: {COLORS['border']}; font-size: 12px; border: none; background: transparent; margin: 0 2px;"
         )
         self._status_badge.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 12px; border: none;"
+            f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none; background: transparent;"
         )
         self._clock_label.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 12px; border: none; margin-left: 8px;"
+            f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none; background: transparent;"
         )
-        self._theme_btn.setStyleSheet(
-            f"background: {COLORS['panel_soft']}; "
-            f"border: 1px solid {COLORS['border']}; "
-            "border-radius: 6px; "
-            "font-size: 14px; "
-            "padding: 0; "
-            "margin-left: 8px;"
-        )
+        self._theme_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: 1px solid {COLORS['border']};
+                border-radius: 5px;
+                font-size: 12px;
+                padding: 0;
+                margin-left: 4px;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['panel_soft']};
+            }}
+        """)
         self._theme_btn.setText("☀️" if dark else "🌙")
+        self._last_cmd_widget.refresh_theme()
+
+

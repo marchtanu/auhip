@@ -17,15 +17,21 @@ class DebugPanel(QWidget):
         self._mic_enabled = True
 
         # Dark card styling (Claude code-window-card aesthetic)
-        self.setStyleSheet(
-            f"QWidget {{ background: {COLORS['dark_card']}; border-top: 1px solid {COLORS['border_dark']};"
-            "border-radius: 0; }"
-        )
-        self.setFixedHeight(180) # Increased height for hardware selectors
+        self.setObjectName("DebugPanel")
+        self.setStyleSheet(f"""
+            #DebugPanel {{
+                background: {COLORS['dark_card']};
+                border-top: 1px solid {COLORS['border_dark']};
+                border-radius: 0px;
+            }}
+        """)
+        self.setFixedHeight(140)
+
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 14, 20, 14)
-        layout.setSpacing(20)
+        layout.setContentsMargins(14, 8, 14, 8)
+        layout.setSpacing(12)
+
 
         # Left: title + mic toggle
         left = QWidget()
@@ -141,9 +147,10 @@ class DebugPanel(QWidget):
 
         self.func_select = QComboBox()
         self.func_select.setStyleSheet(self._combo_style())
-        if hasattr(self._fsm.agent, 'available_tools'):
+        if self._fsm and hasattr(self._fsm, 'agent') and self._fsm.agent and hasattr(self._fsm.agent, 'available_tools'):
             for name in sorted(self._fsm.agent.available_tools.keys()):
                 self.func_select.addItem(name.replace('_', ' ').title(), name)
+
         
         self._exec_btn = QPushButton("Run")
         self._exec_btn.setStyleSheet(f"""
@@ -339,7 +346,7 @@ class DebugPanel(QWidget):
         self._run_async(self._fsm.simulate_shutdown())
 
     def _on_mode_btn_clicked(self, state):
-        if self._fsm.state != state:
+        if self._fsm and self._fsm.state != state:
             self._log_event(f"Forcing State -> {state.name}")
             
             # Map states to their proper entry methods
@@ -350,11 +357,12 @@ class DebugPanel(QWidget):
             elif state == State.CONTROL_MODE:
                 self._run_async(self._fsm._on_enter_control_mode({}))
             elif state == State.SLEEP:
-                self._run_async(self._fsm._enter_sleep_mode())
+                self._run_async(self._fsm._on_enter_sleep_mode({}))
             else:
                 self._fsm.state = state
                 self._run_async(self._fsm._publish_state(f"Debug: Switch to {state.name}"))
         self._update_ui_states()
+
 
     def _add_toggle_btn(self, layout, text, callback, initial=False):
         btn = QPushButton(text)
@@ -409,10 +417,11 @@ class DebugPanel(QWidget):
     def _update_ui_states(self):
         """Sync button styles with system state."""
         # Modes
-        current_state = self._fsm.state
+        current_state = self._fsm.state if self._fsm else None
         for state, btn in self._mode_btns.items():
             btn.setChecked(state == current_state)
             btn.setStyleSheet(self._get_btn_style(state == current_state))
+
 
         # Features
         for btn in [self._btn_eyes, self._btn_hands, self._btn_multi]:

@@ -68,22 +68,15 @@ async def main(mode="direct"):
     hide_on_standby = (mode == "standby")
     window = AuhipMainWindow(fsm, mic, vision_worker, hide_on_standby=hide_on_standby)
     
-    if mode == "direct":
-        window.show()  # Display GUI window immediately on launch
-        await fsm.start()
-        await fsm._enter_voice_mode()  # Method 1: Auto-activate Voice Mode & Text Input
-    else:
-        window.hide()  # Method 2: Hidden background listener mode
-        await fsm.start()  # Wait in STANDBY for snaps / wake phrase
-
-    # ── Calibrate mic (non-blocking) ──────────────────────────────────────
+    # ── 1. Calibrate & initialize speech engines non-blocking ──────────────
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, speech_recognizer.initialize)
 
-    # ── Start Audio Hardware ──────────────────────────────────────────────
+    # ── 2. Start Event Bus & Audio Hardware ──────────────────────────────────
+    event_bus.start()
     mic.start()
     snap_detector.start()
-    
+
     # Connect mic to GUI for hardware switching
     window.debug_panel.set_mic_instance(mic)
 
@@ -92,7 +85,17 @@ async def main(mode="direct"):
     logger.info(f"  Wake phrase    : '{config.WAKE_PHRASE}'")
     logger.info(f"  Shutdown phrase: '{config.SHUTDOWN_PHRASE}'")
 
-    # ── Run Audio Loop ────────────────────────────────────────────────────
+    # ── 3. Start State Machine ──────────────────────────────────────────────
+    await fsm.start()
+
+    # ── 4. Launch Mode Loop ──────────────────────────────────────────────────
+    if mode == "direct":
+        window.show()  # Display GUI window immediately on launch
+        asyncio.create_task(fsm._enter_voice_mode())
+    else:
+        window.hide()  # Hidden background listener mode
+
+    # ── 5. Run Audio Processing Loop ────────────────────────────────────────
     try:
         await audio_loop(mic, snap_detector, window, window.debug_panel)
     except asyncio.CancelledError:
@@ -101,10 +104,13 @@ async def main(mode="direct"):
         logger.exception(f"Unexpected error in main loop: {e}")
     finally:
         await fsm.stop()
+        await event_bus.stop()
         snap_detector.stop()
         mic.stop()
         vision_worker.stop()
         logger.info("auhip shut down.")
+
+
 
 
 if __name__ == "__main__":

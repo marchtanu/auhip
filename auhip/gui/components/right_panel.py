@@ -7,7 +7,7 @@ class RightPanel(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._dividers = []
-        self.setFixedWidth(260)
+        self.setFixedWidth(240)
         self.setStyleSheet(
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
             "border-radius: 12px; }"
@@ -16,12 +16,12 @@ class RightPanel(QFrame):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 20, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(8)
 
         self.header = QLabel("Command history")
         self.header.setStyleSheet(
-            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            f"color: {COLORS['text']}; font-size: 14px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
         layout.addWidget(self.header)
@@ -43,9 +43,10 @@ class RightPanel(QFrame):
         container = QWidget()
         container.setStyleSheet("background: transparent; border: none;")
         l = QVBoxLayout(container)
-        l.setContentsMargins(0, 16, 0, 12)
+        l.setContentsMargins(0, 10, 0, 8)
         l.addWidget(line)
         return container
+
 
     def refresh_theme(self):
         self.setStyleSheet(

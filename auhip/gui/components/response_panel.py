@@ -18,8 +18,8 @@ class ResponsePanel(QWidget):
                 background: transparent;
                 border: none;
                 color: {COLORS['text_body']};
-                font-size: 14px;
-                line-height: 1.55;
+                font-size: 13px;
+                line-height: 1.6;
                 padding: 0;
             }}
         """)
@@ -28,8 +28,7 @@ class ResponsePanel(QWidget):
     def add_response(self, text: str, response_type: str = "response"):
         color = RESPONSE_COLORS.get(response_type, COLORS["text_body"])
         self._text.append(
-            f'<span style="color:{color}; font-size:14px; line-height:1.55;">{text}</span>'
-            f'<br>'
+            f'<div style="margin-bottom: 10px; color:{color}; font-size:13px; line-height:1.55;">{text}</div>'
         )
         self._text.moveCursor(QTextCursor.MoveOperation.End)
 
@@ -40,9 +39,10 @@ class ResponsePanel(QWidget):
                 background: transparent;
                 border: none;
                 color: {COLORS['text_body']};
-                font-size: 14px;
-                line-height: 1.55;
+                font-size: 13px;
+                line-height: 1.6;
                 padding: 0;
             }}
         """)
+
 

@@ -16,7 +16,7 @@ class CenterPanel(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(10)
 
         # Audio waveform card
         self.wave_card = QFrame()
@@ -24,15 +24,15 @@ class CenterPanel(QWidget):
             f"QFrame {{ background: {COLORS['panel']}; border: 1px solid {COLORS['border']};"
             "border-radius: 12px; }"
         )
-        self.wave_card.setFixedHeight(100)
+        self.wave_card.setFixedHeight(80)
         wl = QVBoxLayout(self.wave_card)
-        wl.setContentsMargins(16, 10, 16, 10)
-        wl.setSpacing(4)
+        wl.setContentsMargins(14, 8, 14, 8)
+        wl.setSpacing(2)
 
         self.wave_header = QLabel("Audio input")
         self.wave_header.setStyleSheet(
-            f"color: {COLORS['text_muted']}; font-size: 11px; font-weight: 500;"
-            "letter-spacing: 0.3px; text-transform: uppercase; border: none;"
+            f"color: {COLORS['text_muted']}; font-size: 10px; font-weight: 600;"
+            "letter-spacing: 0.4px; text-transform: uppercase; border: none;"
         )
         wl.addWidget(self.wave_header)
 
@@ -55,7 +55,7 @@ class CenterPanel(QWidget):
         split.setStyleSheet("background: transparent; border: none;")
         split_layout = QHBoxLayout(split)
         split_layout.setContentsMargins(0, 0, 0, 0)
-        split_layout.setSpacing(14)
+        split_layout.setSpacing(10)
 
         # Transcript card
         self.transcript_card = QFrame()
@@ -64,11 +64,11 @@ class CenterPanel(QWidget):
             "border-radius: 12px; }"
         )
         tl = QVBoxLayout(self.transcript_card)
-        tl.setContentsMargins(16, 16, 16, 16)
-        tl.setSpacing(10)
+        tl.setContentsMargins(14, 12, 14, 12)
+        tl.setSpacing(8)
         self.t_header = QLabel("Live transcript")
         self.t_header.setStyleSheet(
-            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            f"color: {COLORS['text']}; font-size: 14px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
         tl.addWidget(self.t_header)
@@ -83,11 +83,11 @@ class CenterPanel(QWidget):
             "border-radius: 12px; }"
         )
         rl = QVBoxLayout(self.response_card)
-        rl.setContentsMargins(16, 16, 16, 16)
-        rl.setSpacing(10)
+        rl.setContentsMargins(14, 12, 14, 12)
+        rl.setSpacing(8)
         self.r_header = QLabel("auhip response")
         self.r_header.setStyleSheet(
-            f"color: {COLORS['text']}; font-size: 15px; font-weight: 600;"
+            f"color: {COLORS['text']}; font-size: 14px; font-weight: 600;"
             "letter-spacing: -0.1px; border: none;"
         )
         rl.addWidget(self.r_header)
@@ -96,6 +96,7 @@ class CenterPanel(QWidget):
         split_layout.addWidget(self.response_card, 1)
 
         layout.addWidget(split, 1)
+
 
     def refresh_theme(self, dark: bool = False):
         """Re-apply styles after a theme switch."""
