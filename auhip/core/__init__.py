@@ -1,1 +1,1 @@
-# auhip core package namespace
+# Init

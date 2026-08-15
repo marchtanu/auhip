@@ -1,31 +1,31 @@
-# auhip GUI Theme — Dual-Mode Premium Design System
-# Light:  Claude's warm cream canvas, Apple typography, Notion clean borders
-# Dark:   Deep obsidian void, electric cyan glow accent, high-contrast HUD elements
+# auhip GUI Theme — Dual-Mode Premium Minimal Design System
+# Light:  Crisp white canvas, monochrome aesthetic, flat modern look
+# Dark:   Deep black void, monochrome white accent, high-contrast flat layout
 
 # ── Light Theme ───────────────────────────────────────────────────────────────
 
 LIGHT_COLORS = {
     # Surfaces
-    "bg":            "#F7F6F3",
-    "surface":       "#FFFFFF",
-    "panel":         "#FFFFFF",
-    "panel_soft":    "#F3F0EA",
-    "nav":           "#18181B",
+    "bg":            "#FFFFFF",
+    "surface":       "#FAFAFA",
+    "panel":         "#FAFAFA",
+    "panel_soft":    "#F4F4F5",
+    "nav":           "#FFFFFF",
     "dark_card":     "#18181B",
 
-    # Borders
-    "border":        "#E5E2DB",
-    "border_soft":   "#EFECE6",
-    "border_dark":   "#27272A",
+    # Borders - subtle
+    "border":        "#F4F4F5",
+    "border_soft":   "#FAFAFA",
+    "border_dark":   "#E4E4E7",
 
     # Accent
-    "accent":        "#D96338",
-    "accent_hover":  "#B84F2A",
-    "accent_dim":    "#F9EFE9",
+    "accent":        "#000000",
+    "accent_hover":  "#3F3F46",
+    "accent_dim":    "#F4F4F5",
     "accent_yellow": "#EAB308",
 
     # Text on light
-    "text":          "#18181B",
+    "text":          "#09090B",
     "text_body":     "#3F3F46",
     "text_muted":    "#71717A",
     "text_soft":     "#A1A1AA",
@@ -40,7 +40,7 @@ LIGHT_COLORS = {
     "danger":  "#EF4444",
 
     # Legacy aliases
-    "processing": "#D96338",
+    "processing": "#000000",
     "shutdown":   "#EF4444",
 }
 
@@ -48,42 +48,42 @@ LIGHT_COLORS = {
 
 DARK_COLORS = {
     # Surfaces
-    "bg":            "#080A0F",
-    "surface":       "#0F121A",
-    "panel":         "#151924",
-    "panel_soft":    "#1C2232",
-    "nav":           "#05070A",
-    "dark_card":     "#090C12",
+    "bg":            "#000000",
+    "surface":       "#09090B",
+    "panel":         "#09090B",
+    "panel_soft":    "#18181B",
+    "nav":           "#000000",
+    "dark_card":     "#09090B",
 
     # Borders
-    "border":        "#262E42",
-    "border_soft":   "#1E2436",
-    "border_dark":   "#374151",
+    "border":        "#18181B",
+    "border_soft":   "#09090B",
+    "border_dark":   "#27272A",
 
-    # Accent — electric cyan / neon teal
-    "accent":        "#00E5FF",
-    "accent_hover":  "#00B3CC",
-    "accent_dim":    "#0B2838",
-    "accent_yellow": "#FFB800",
+    # Accent 
+    "accent":        "#FFFFFF",
+    "accent_hover":  "#D4D4D8",
+    "accent_dim":    "#18181B",
+    "accent_yellow": "#F59E0B",
 
     # Text on dark surfaces
-    "text":          "#F4F4F5",
+    "text":          "#FAFAFA",
     "text_body":     "#D4D4D8",
-    "text_muted":    "#71717A",
-    "text_soft":     "#52525B",
+    "text_muted":    "#A1A1AA",
+    "text_soft":     "#71717A",
 
     # Text on dark
-    "text_on_dark":       "#F4F4F5",
+    "text_on_dark":       "#FAFAFA",
     "text_on_dark_muted": "#71717A",
 
     # Semantic
-    "success": "#00F59B",
-    "warning": "#FFB800",
-    "danger":  "#FF4D4D",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "danger":  "#EF4444",
 
     # Legacy aliases
-    "processing": "#00E5FF",
-    "shutdown":   "#FF4D4D",
+    "processing": "#FFFFFF",
+    "shutdown":   "#EF4444",
 }
 
 # ── Active Theme (mutable reference) ─────────────────────────────────────────
@@ -109,29 +109,29 @@ def set_theme(dark: bool):
 # ── State Colors ──────────────────────────────────────────────────────────────
 
 LIGHT_STATE_COLORS = {
-    "STANDBY":           "#71717A",
+    "STANDBY":           "#A1A1AA",
     "SNAP_DETECTED":     "#F59E0B",
-    "WAITING_WAKE_WORD": "#D96338",
-    "VOICE_MODE":        "#18181B",
+    "WAITING_WAKE_WORD": "#000000",
+    "VOICE_MODE":        "#09090B",
     "CAMERA_MODE":       "#10B981",
     "CONTROL_MODE":      "#3B82F6",
-    "PROCESSING":        "#D96338",
-    "SLEEP":             "#71717A",
+    "PROCESSING":        "#000000",
+    "SLEEP":             "#A1A1AA",
     "SHUTDOWN":          "#EF4444",
-    "COMMAND_MODE":      "#18181B",
+    "COMMAND_MODE":      "#09090B",
 }
 
 DARK_STATE_COLORS = {
-    "STANDBY":           "#52525B",
-    "SNAP_DETECTED":     "#FFB800",
-    "WAITING_WAKE_WORD": "#00E5FF",
-    "VOICE_MODE":        "#F4F4F5",
-    "CAMERA_MODE":       "#00F59B",
+    "STANDBY":           "#71717A",
+    "SNAP_DETECTED":     "#F59E0B",
+    "WAITING_WAKE_WORD": "#FFFFFF",
+    "VOICE_MODE":        "#FAFAFA",
+    "CAMERA_MODE":       "#10B981",
     "CONTROL_MODE":      "#3B82F6",
-    "PROCESSING":        "#00E5FF",
-    "SLEEP":             "#52525B",
-    "SHUTDOWN":          "#FF4D4D",
-    "COMMAND_MODE":      "#F4F4F5",
+    "PROCESSING":        "#FFFFFF",
+    "SLEEP":             "#71717A",
+    "SHUTDOWN":          "#EF4444",
+    "COMMAND_MODE":      "#FAFAFA",
 }
 
 STATE_COLORS = LIGHT_STATE_COLORS.copy()
@@ -149,18 +149,18 @@ RESPONSE_COLORS = {
     "info":     "#71717A",
     "success":  "#10B981",
     "warning":  "#F59E0B",
-    "response": "#18181B",
+    "response": "#09090B",
     "shutdown": "#EF4444",
-    "greeting": "#D96338",
+    "greeting": "#000000",
 }
 
 DARK_RESPONSE_COLORS = {
-    "info":     "#71717A",
-    "success":  "#00F59B",
-    "warning":  "#FFB800",
-    "response": "#F4F4F5",
-    "shutdown": "#FF4D4D",
-    "greeting": "#00E5FF",
+    "info":     "#A1A1AA",
+    "success":  "#10B981",
+    "warning":  "#F59E0B",
+    "response": "#FAFAFA",
+    "shutdown": "#EF4444",
+    "greeting": "#FFFFFF",
 }
 
 # ── Stylesheet Builder ────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ QMainWindow, QWidget {{
 QFrame {{
     background-color: {c['panel']};
     border: 1px solid {c['border']};
-    border-radius: 12px;
+    border-radius: 4px;
 }}
 QLabel {{
     background-color: transparent;
@@ -187,7 +187,7 @@ QLabel {{
 QTextEdit {{
     background-color: {c['panel']};
     border: 1px solid {c['border']};
-    border-radius: 8px;
+    border-radius: 4px;
     color: {c['text_body']};
     padding: 12px;
     font-size: 13px;
@@ -203,7 +203,7 @@ QListWidget {{
 }}
 QListWidget::item {{
     padding: 10px 0;
-    border-bottom: 1px solid {c['border_soft']};
+    border-bottom: 1px solid {c['border']};
 }}
 QListWidget::item:selected {{
     background: transparent;
@@ -212,11 +212,11 @@ QListWidget::item:selected {{
 QPushButton {{
     background-color: {c['accent']};
     border: none;
-    border-radius: 8px;
-    color: {'#FFFFFF' if not dark else '#080A0F'};
+    border-radius: 4px;
+    color: {'#FFFFFF' if not dark else '#000000'};
     padding: 7px 16px;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
 }}
 QPushButton:hover {{
     background-color: {c['accent_hover']};
@@ -232,16 +232,16 @@ QCheckBox {{
 }}
 QScrollBar:vertical {{
     background: transparent;
-    width: 6px;
+    width: 4px;
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: {c['border']};
+    background: {c['border_dark']};
     min-height: 24px;
-    border-radius: 3px;
+    border-radius: 2px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: {c['accent']};
+    background: {c['text_muted']};
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
@@ -254,4 +254,3 @@ QSplitter::handle {{
 
 # Default stylesheet (light mode on startup)
 STYLESHEET = build_stylesheet(dark=False)
-
