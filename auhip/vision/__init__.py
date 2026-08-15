@@ -1,1 +1,1 @@
-# auhip vision package namespace
+# Init

@@ -1,1 +1,1 @@
-# auhip audio package namespace
+# Init
