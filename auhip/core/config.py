@@ -27,12 +27,12 @@ class Config:
     # Options: "whisper" (recommended), "vosk" (offline fallback), "google" (cloud)
     STT_ENGINE: str = "whisper"
 
-    # faster-whisper model size: "tiny" (~0.3s), "base" (~0.5s), "small" (~0.8s), "medium" (~1.5s)
-    WHISPER_MODEL_SIZE: str = "base"
-    # Compute device: "cpu" always works; "cuda" requires NVIDIA GPU + cuDNN
-    WHISPER_DEVICE: str = "cpu"
-    # int8 quantisation — much faster on CPU with minimal accuracy loss
-    WHISPER_COMPUTE_TYPE: str = "int8"
+    # faster-whisper model: "base.en" (recommended, ~0.35s), "small.en", "distil-small.en", "turbo", "base"
+    WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "base.en")
+    # Compute device: "cpu" (standard), "cuda" (GPU with cuDNN)
+    WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
+    # Compute type: "int8" (optimal for CPU), "float16" (optimal for CUDA)
+    WHISPER_COMPUTE_TYPE: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
     VOSK_MODEL_PATH: str = "vosk-model-small-en-us-0.15"
     WAKE_WORD_TIMEOUT: float = 8.0
@@ -53,4 +53,29 @@ class Config:
     # Set True to print a distinct separator in the response on timer completion
     TIMER_CHIME: bool = True
 
+    # Text-to-Speech (TTS) Voice Synthesis
+    TTS_ENABLED: bool = True
+    # Primary engine: "edge" (natural neural voices) or "pyttsx3" (offline SAPI5)
+    TTS_ENGINE: str = "edge"
+    # Edge-TTS voice (e.g. "en-GB-RyanNeural" for British Jarvis, "en-US-ChristopherNeural" for US male, "en-US-AriaNeural" for US female)
+    TTS_VOICE: str = "en-GB-RyanNeural"
+    TTS_RATE: str = "+0%"
+    TTS_PITCH: str = "+0Hz"
+    TTS_VOLUME: str = "+0%"
+    # Maximum characters to speak at once to avoid overly verbose monologues
+    TTS_MAX_CHARS: int = 450
+    # pyttsx3 offline fallback settings
+    TTS_PYTTSX3_RATE: int = 180
+    TTS_PYTTSX3_VOICE_INDEX: int = 0
+
+    # Conversational Flow & Barge-In (OpenAI Voice Mode style)
+    BARGE_IN_ENABLED: bool = True
+    # If False (default), AUHIP remains in continuous Voice Mode without auto-reverting to Standby
+    AUTO_STANDBY_ENABLED: bool = False
+    CONVERSATION_TIMEOUT_SECONDS: float = 15.0  # Inactivity seconds before Standby (only if AUTO_STANDBY_ENABLED=True)
+
+    # Hardware Optimization
+    CAMERA_ON_DEMAND: bool = True  # Only activate camera & MediaPipe when in gesture/camera mode
+
 config = Config()
+

@@ -30,11 +30,16 @@ class ToolSchema:
 class ToolRegistry:
     """
     Dynamic Tool Registry supporting auto-discovery, capability tagging, 
-    and sandbox verification.
+    and sandbox verification. Bridges with ToolManager.
     """
     def __init__(self):
         self._tools: Dict[str, tuple[ToolSchema, Callable]] = {}
+        self._tool_manager = None
         
+    def set_tool_manager(self, tm):
+        """Binds central ToolManager for schema and execution bridging."""
+        self._tool_manager = tm
+
     def register(self, schema: ToolSchema, handler: Callable):
         """Registers a tool manually."""
         if schema.name in self._tools:
@@ -44,23 +49,38 @@ class ToolRegistry:
 
     def get_tool(self, name: str) -> Optional[Callable]:
         """Fetch the execution handler for a tool."""
+        if self._tool_manager and name in self._tool_manager._tools:
+            return self._tool_manager._tools[name][1]
         if name in self._tools:
             return self._tools[name][1]
         return None
         
     def get_schema(self, name: str) -> Optional[ToolSchema]:
         """Fetch the schema for a tool."""
+        if self._tool_manager and name in self._tool_manager._tools:
+            return self._tool_manager._tools[name][0]
         if name in self._tools:
             return self._tools[name][0]
         return None
 
     def get_all_schemas(self) -> list[dict]:
         """Return all tools as JSON schemas for the LLM."""
+        if self._tool_manager:
+            schemas = []
+            for s in self._tool_manager.get_schemas():
+                if hasattr(s, "to_dict"):
+                    schemas.append(s.to_dict())
+                else:
+                    schemas.append({
+                        "name": s.name,
+                        "description": s.description,
+                        "parameters": getattr(s, "parameters", {})
+                    })
+            return schemas
         return [schema.to_dict() for schema, _ in self._tools.values()]
 
     def auto_discover(self, package_name: str = "auhip.skills"):
         """Dynamically load and register all tools from a package directory."""
-        # Find the path of the package
         try:
             package = importlib.import_module(package_name)
             package_path = os.path.dirname(package.__file__)
@@ -73,15 +93,10 @@ class ToolRegistry:
                 module_name = f"{package_name}.{filename[:-3]}"
                 try:
                     module = importlib.import_module(module_name)
-                    # For every async function in the module, register if it has a docstring
-                    # In a full implementation, we would use a @tool decorator.
-                    # For compatibility, we'll try to guess based on existing conventions.
                     for name, obj in inspect.getmembers(module, inspect.iscoroutinefunction):
                         if obj.__module__ == module_name and obj.__doc__:
-                            # We construct a basic schema from the docstring
                             desc = obj.__doc__.strip().split('\n')[0]
                             schema = ToolSchema(name=name, description=desc)
-                            # Parse type hints for parameters
                             sig = inspect.signature(obj)
                             props = {}
                             required = []
@@ -104,18 +119,24 @@ class ToolRegistry:
     async def execute_in_sandbox(self, name: str, kwargs: dict) -> str:
         """
         Executes a tool with permission checks. 
-        Dangerous actions will trigger a confirmation flow before executing.
+        Delegates to ToolManager when available.
         """
+        if self._tool_manager and name in self._tool_manager._tools:
+            try:
+                res = await self._tool_manager.execute(name, kwargs)
+                return str(res)
+            except Exception as e:
+                logger.error(f"Tool {name} failed via tool_manager: {e}")
+                return f"Tool Execution Error: {e}"
+
         schema, handler = self._tools.get(name, (None, None))
         if not handler:
             return f"Error: Tool '{name}' not found in registry."
             
         if schema.requires_confirmation:
-            # Here we would pause and ask the Supervisor/Safety agent or the user via EventBus
             logger.warning(f"Tool {name} requires confirmation. Simulating auto-approve for now.")
             
         try:
-            # Safely invoke
             if inspect.iscoroutinefunction(handler):
                 result = await handler(**kwargs)
             else:
@@ -126,3 +147,4 @@ class ToolRegistry:
             return f"Tool Execution Error: {e}"
 
 tool_registry = ToolRegistry()
+

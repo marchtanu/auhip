@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Configure PyAutoGUI for safety
 pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.5 # Adds a slight delay between actions for realism
+pyautogui.PAUSE = 0.05 # Minimal delay so media keys and gestures respond smoothly
 
 class ComputerActionLayer:
     """

@@ -2,8 +2,15 @@ import asyncio
 import logging
 import os
 import time
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    _HAS_WATCHDOG = True
+except ImportError:
+    Observer = None
+    FileSystemEventHandler = object
+    _HAS_WATCHDOG = False
 
 from auhip.core.event_bus import event_bus, EventPriority
 
@@ -11,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 class WorkspaceEventHandler(FileSystemEventHandler):
     def __init__(self, loop):
-        super().__init__()
+        if _HAS_WATCHDOG:
+            super().__init__()
         self.loop = loop
         self.supported_extensions = {
             ".txt", ".md", ".py", ".js", ".ts", ".json", ".csv"
@@ -58,6 +66,9 @@ class WorkspaceIndexer:
         event_bus.subscribe("FILE_CHANGED", self._process_file_change)
 
     def start(self):
+        if not _HAS_WATCHDOG:
+            logger.info("watchdog not installed — workspace live file watcher disabled.")
+            return
         if self.observer is None:
             loop = asyncio.get_running_loop()
             event_handler = WorkspaceEventHandler(loop)

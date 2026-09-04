@@ -29,6 +29,7 @@ except ImportError:
 
 import speech_recognition as sr
 from ..core.config import config
+from ..core.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,16 @@ class SpeechRecognizer:
         logger.info("Speech engine: Google Cloud STT")
         return True  # Google always available (needs internet)
 
+    def _notify_stt_status(self, data: dict):
+        """Safely dispatch STT_STATUS updates across threads."""
+        try:
+            if hasattr(event_bus, "publish_sync"):
+                event_bus.publish_sync("STT_STATUS", data)
+        except Exception as e:
+            logger.debug(f"Could not dispatch STT_STATUS: {e}")
+
     def _init_whisper(self) -> bool:
+        """Initialize faster-whisper model (blocking — run in thread)."""
         if not _HAS_WHISPER:
             logger.error("faster-whisper not installed. Run: pip install faster-whisper")
             return False
@@ -80,6 +90,12 @@ class SpeechRecognizer:
                 f"Loading faster-whisper model '{config.WHISPER_MODEL_SIZE}' "
                 f"on {config.WHISPER_DEVICE} ({config.WHISPER_COMPUTE_TYPE})..."
             )
+            self._notify_stt_status({
+                "status": "loading",
+                "engine": "whisper",
+                "model": config.WHISPER_MODEL_SIZE,
+                "message": f"Loading faster-whisper model '{config.WHISPER_MODEL_SIZE}'..."
+            })
             # Model is downloaded to HuggingFace cache on first run (~74 MB for 'base')
             self._whisper_model = _WhisperModel(
                 config.WHISPER_MODEL_SIZE,
@@ -90,6 +106,12 @@ class SpeechRecognizer:
             _silence = np.zeros(3200, dtype=np.float32)
             list(self._whisper_model.transcribe(_silence, language="en")[0])
             logger.info("faster-whisper ready.")
+            self._notify_stt_status({
+                "status": "ready",
+                "engine": "whisper",
+                "model": config.WHISPER_MODEL_SIZE,
+                "message": "faster-whisper ready."
+            })
 
             from .whisper_recognizer import WhisperRecognizer
             self._whisper_rec = WhisperRecognizer(
@@ -99,6 +121,39 @@ class SpeechRecognizer:
             return True
         except Exception as e:
             logger.error(f"faster-whisper init failed: {e}")
+            self._notify_stt_status({
+                "status": "error",
+                "engine": "whisper",
+                "error": str(e)
+            })
+            return False
+
+    def switch_whisper_model(self, model_size: str) -> bool:
+        """Switch or upgrade the Faster-Whisper model size at runtime."""
+        if not _HAS_WHISPER:
+            return False
+        try:
+            logger.info(f"Switching Whisper model to '{model_size}'...")
+            new_model = _WhisperModel(
+                model_size,
+                device=config.WHISPER_DEVICE,
+                compute_type=config.WHISPER_COMPUTE_TYPE,
+            )
+            # Warm up
+            _silence = np.zeros(3200, dtype=np.float32)
+            list(new_model.transcribe(_silence)[0])
+
+            self._whisper_model = new_model
+            config.WHISPER_MODEL_SIZE = model_size
+            if self._whisper_rec:
+                self._whisper_rec.set_model(new_model)
+            else:
+                from .whisper_recognizer import WhisperRecognizer
+                self._whisper_rec = WhisperRecognizer(self._whisper_model, sample_rate=config.SAMPLERATE)
+            logger.info(f"Successfully switched to Whisper model '{model_size}'.")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to switch Whisper model to '{model_size}': {e}")
             return False
 
     def _init_vosk(self) -> bool:
@@ -133,7 +188,7 @@ class SpeechRecognizer:
         Async entry point — runs blocking recognition in a thread executor.
         Returns lowercased text or None.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             lambda: self._listen_blocking(timeout, phrase_time_limit, grammar, cancel_event, mic),

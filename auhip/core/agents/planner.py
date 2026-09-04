@@ -25,9 +25,11 @@ class PlannerAgent:
     Generates Acyclic Action Graphs for multi-step goals.
     Provides execution, verification, and rollback tracking.
     """
-    def __init__(self, llm_router):
+    def __init__(self, llm_router, tool_manager=None):
         self.llm_router = llm_router
+        self.tool_manager = tool_manager
         event_bus.subscribe("DELEGATE_TO_PLANNER", self.handle_planning_request)
+        logger.info("PlannerAgent initialized.")
 
     async def handle_planning_request(self, payload: dict):
         """Event handler when the Supervisor delegates a goal."""
@@ -41,12 +43,15 @@ class PlannerAgent:
         graph = await self.generate_plan(goal)
         
         if graph:
-            # 2. Execute Plan (in real architecture, this is passed to an ExecutionAgent)
+            # 2. Execute Plan
             await self.execute_plan(graph)
             
     async def generate_plan(self, goal: str) -> ActionGraph:
         """Uses the LLM to convert a goal into an ActionGraph."""
-        schemas = tool_registry.get_all_schemas()
+        if self.tool_manager:
+            schemas = [s.to_dict() if hasattr(s, "to_dict") else s for s in self.tool_manager.get_schemas()]
+        else:
+            schemas = tool_registry.get_all_schemas()
         
         prompt = (
             f"Goal: {goal}\n"
@@ -56,12 +61,11 @@ class PlannerAgent:
         )
         
         try:
-            # We enforce JSON mode via the local router (assumes qwen2.5 or mistral supports it)
+            # Enforce JSON mode via the router
             response = await self.llm_router.generate_json(prompt, schemas)
             
             # Parse the JSON into our Pydantic model
-            # Note: Assuming the router handles raw JSON extraction correctly
-            graph_data = json.loads(response)
+            graph_data = json.loads(response) if isinstance(response, str) else response
             graph = ActionGraph(**graph_data)
             logger.info(f"Generated ActionGraph with {len(graph.nodes)} nodes.")
             return graph
@@ -79,8 +83,6 @@ class PlannerAgent:
         completed = set()
         results = {}
         
-        # Simple loop for resolving dependencies
-        # A full implementation would use Topological Sort & asyncio.gather for parallel execution
         while len(completed) < len(graph.nodes):
             progress_made = False
             
@@ -92,18 +94,17 @@ class PlannerAgent:
                 if all(dep in completed for dep in node.dependencies):
                     logger.info(f"Executing step {node.id}: {node.tool_name}")
                     
-                    # Inject variables from previous steps if needed
-                    # (Simplified here)
-                    
                     try:
-                        res = await tool_registry.execute_in_sandbox(node.tool_name, node.arguments)
+                        if self.tool_manager and hasattr(self.tool_manager, "execute"):
+                            res = await self.tool_manager.execute(node.tool_name, node.arguments)
+                        else:
+                            res = await tool_registry.execute_in_sandbox(node.tool_name, node.arguments)
                         results[node.id] = res
                         logger.info(f"Step {node.id} complete. Verification: {node.verification_step}")
                         completed.add(node.id)
                         progress_made = True
                     except Exception as e:
                         logger.error(f"Execution failed at step {node.id}: {e}")
-                        # Rollback logic would trigger here
                         return
                         
             if not progress_made:

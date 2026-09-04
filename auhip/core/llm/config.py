@@ -26,8 +26,7 @@ class LLMConfig:
     
     # Tool Execution & Security Constraints
     SANDBOX_ALLOWED_DIRS: List[str] = field(default_factory=lambda: [
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")),
-        os.path.expanduser("~")
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     ])
 
 

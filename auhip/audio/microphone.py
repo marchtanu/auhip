@@ -1,4 +1,5 @@
 import queue
+import threading
 import sounddevice as sd
 import logging
 from ..core.config import config
@@ -8,25 +9,29 @@ logger = logging.getLogger(__name__)
 class Microphone:
     def __init__(self):
         self._queues = set()
+        self._queues_lock = threading.Lock()
         self.stream = None
 
     def subscribe(self, maxsize=100):
         """Returns a new queue that will receive all audio chunks."""
         q = queue.Queue(maxsize=maxsize)
-        self._queues.add(q)
+        with self._queues_lock:
+            self._queues.add(q)
         return q
 
     def unsubscribe(self, q):
         """Removes a queue from the subscription list."""
-        if q in self._queues:
-            self._queues.remove(q)
+        with self._queues_lock:
+            self._queues.discard(q)
 
     def _callback(self, indata, frames, time, status):
         if status:
             logger.warning(f"Audio stream status: {status}")
         
         data = indata.copy()
-        for q in list(self._queues): # Use list() to avoid mutation issues
+        with self._queues_lock:
+            queues_snapshot = list(self._queues)
+        for q in queues_snapshot:
             try:
                 q.put_nowait(data)
             except queue.Full:

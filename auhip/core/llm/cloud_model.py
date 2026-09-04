@@ -57,7 +57,7 @@ class GeminiProvider(BaseLLMProvider):
                 provider_used="cloud"
             )
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         
         # Inject structural schemas to enforce structured JSON adherence from Gemini
         schema_guidance = (
@@ -107,7 +107,10 @@ class GeminiProvider(BaseLLMProvider):
         last_error = None
         for attempt in range(llm_config.CLOUD_MAX_RETRIES):
             try:
-                headers = {"Content-Type": "application/json"}
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                }
                 async with session.post(url, headers=headers, json=payload) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()

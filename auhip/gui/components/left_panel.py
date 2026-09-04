@@ -54,6 +54,23 @@ class LeftPanel(QFrame):
         mic_layout.addStretch()
         layout.addWidget(mic_row)
 
+        # TTS voice status row
+        self._tts_dot = QLabel("●")
+        self._tts_dot.setStyleSheet(f"color: {COLORS['success']}; font-size: 10px; border: none;")
+
+        tts_row = QWidget()
+        tts_row.setStyleSheet("background: transparent; border: none;")
+        tts_layout = QHBoxLayout(tts_row)
+        tts_layout.setContentsMargins(0, 4, 0, 0)
+        tts_layout.setSpacing(6)
+        tts_layout.addWidget(self._tts_dot)
+
+        self.tts_lbl = QLabel("Voice Output")
+        self.tts_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none;")
+        tts_layout.addWidget(self.tts_lbl)
+        tts_layout.addStretch()
+        layout.addWidget(tts_row)
+
         # Snap detector
         layout.addSpacing(6)
         self.snap_label = QLabel("Snap Detector")
@@ -225,6 +242,17 @@ class LeftPanel(QFrame):
         color = COLORS["success"] if active else COLORS["text_soft"]
         self._mic_dot.setStyleSheet(f"color: {color}; font-size: 10px; border: none;")
 
+    def set_tts_active(self, active: bool, speaking: bool = False):
+        if not active:
+            self._tts_dot.setStyleSheet(f"color: {COLORS['text_soft']}; font-size: 10px; border: none;")
+            self.tts_lbl.setText("Voice Output (Muted)")
+        elif speaking:
+            self._tts_dot.setStyleSheet(f"color: {COLORS['accent']}; font-size: 10px; border: none;")
+            self.tts_lbl.setText("Voice Output (Speaking...)")
+        else:
+            self._tts_dot.setStyleSheet(f"color: {COLORS['success']}; font-size: 10px; border: none;")
+            self.tts_lbl.setText("Voice Output (Ready)")
+
     def update_snaps(self, count: int):
         coral = COLORS["accent"]
         soft = COLORS["border"]
@@ -254,6 +282,9 @@ class LeftPanel(QFrame):
 
         self._mic_dot.setStyleSheet(f"color: {COLORS['success']}; font-size: 10px; border: none;")
         self.mic_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none;")
+        if hasattr(self, '_tts_dot'):
+            self._tts_dot.setStyleSheet(f"color: {COLORS['success']}; font-size: 10px; border: none;")
+            self.tts_lbl.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none;")
         self.snap_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px; font-weight: 500; border: none;")
 
         soft = COLORS["border"]

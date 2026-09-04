@@ -73,7 +73,7 @@ class ToolManager:
             if inspect.iscoroutinefunction(handler):
                 result = await asyncio.wait_for(handler(**args), timeout=exec_timeout)
             else:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: handler(**args)),
                     timeout=exec_timeout

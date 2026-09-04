@@ -164,25 +164,30 @@ class VisionWorker(QObject):
         logger.info(f"Vision mode set to: {self._vision_mode}")
 
         # Hardware Management: Start/Stop/Throttle Camera based on mode
-        if mode == self.MODE_NONE:
-            if self.running:
-                self.stop()
-            self.unload_models()
-        elif mode == self.MODE_SLEEP:
+        from auhip.core.config import config
+        on_demand = getattr(config, "CAMERA_ON_DEMAND", True)
+
+        if mode in (self.MODE_CAMERA, self.MODE_CONTROL):
+            # Active vision modes (Camera/Control)
             self._ensure_models_loaded()
-            self.interval_ms = 100 # 10 FPS
+            self.interval_ms = 33  # ~30 FPS
+            if not self.running:
+                self.start()
+            else:
+                self.timer.setInterval(self.interval_ms)
+        elif mode == self.MODE_SLEEP:
+            # Low-power throttled camera (~7 FPS) for emergency wake gesture in sleep mode
+            self._ensure_models_loaded()
+            self.interval_ms = 140  # ~7 FPS (low CPU/power)
             if not self.running:
                 self.start()
             else:
                 self.timer.setInterval(self.interval_ms)
         else:
-            # Active modes (Camera/Control)
-            self._ensure_models_loaded()
-            self.interval_ms = 33 # ~30 FPS
-            if not self.running:
-                self.start()
-            else:
-                self.timer.setInterval(self.interval_ms)
+            # Standby, Voice: completely power off camera and unload models
+            if self.running:
+                self.stop()
+            self.unload_models()
 
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -193,7 +198,11 @@ class VisionWorker(QObject):
             self.timer.start(self.interval_ms)
             self.running = True
             logger.info("Vision Worker started.")
-            asyncio.create_task(event_bus.publish("VISION_READY", {}))
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(event_bus.publish("VISION_READY", {}))
+            except RuntimeError:
+                pass
 
     def stop(self):
         if self.running:
@@ -320,6 +329,19 @@ class VisionWorker(QObject):
                 for lm in eye_results["face_landmarks"]:
                     cv2.circle(debug_frame, (int(lm["x"] * w), int(lm["y"] * h)), 1, (0, 180, 0), -1)
 
+        # Draw Air-Mouse fingertip target crosshair
+        if self._vision_mode == self.MODE_CONTROL and hand_landmarks:
+            h, w, _ = debug_frame.shape
+            tip = hand_landmarks[0][8]  # Index fingertip
+            cx, cy = int(tip['x'] * w), int(tip['y'] * h)
+            color = (0, 230, 115) if self._holding else (255, 200, 50)
+            cv2.circle(debug_frame, (cx, cy), 16, color, 2)
+            cv2.circle(debug_frame, (cx, cy), 3, (255, 255, 255), -1)
+            cv2.line(debug_frame, (cx - 22, cy), (cx - 10, cy), color, 2)
+            cv2.line(debug_frame, (cx + 10, cy), (cx + 22, cy), color, 2)
+            cv2.line(debug_frame, (cx, cy - 22), (cx, cy - 10), color, 2)
+            cv2.line(debug_frame, (cx, cy + 10), (cx, cy + 22), color, 2)
+
         vision_dict = {
             "fps":           self.camera.get_fps(),
             "has_face":      has_face,
@@ -416,19 +438,20 @@ class VisionWorker(QObject):
         ring_up   = is_up(16, 13)
         pinky_up  = is_up(20, 17)
 
-        # ── Pinch Detection ──
+        # ── Pinch Detection: Natural Index-Thumb Pinch ──
         d_index  = get_dist(index_tip,  thumb_tip)
         d_middle = get_dist(middle_tip, thumb_tip)
-        pinching = (d_index < 0.06 and d_middle < 0.06)
+        pinching = (d_index < 0.075) or (d_index < 0.085 and d_middle < 0.085)
 
-        # ── Movement Logic ──
-        # Movement is allowed if fingers are up, OR we are in a 'holding' state (dragging)
-        should_move = (index_up and middle_up and not pinky_up) or self._holding or pinching
+        # ── Movement Logic: Natural Index Pointing or 2-Finger Pointer ──
+        # Single index finger pointing forward (standard pointer), or index+middle up, or dragging
+        pointing = index_up and not (ring_up and pinky_up)
+        should_move = pointing or middle_up or self._holding or pinching
 
         if should_move:
             screen_w, screen_h = pyautogui.size()
-            # Expanded margins for easier edge access
-            mx, my = 0.15, 0.2
+            # Margins for comfortable screen reach
+            mx, my = 0.12, 0.14
             x = np.interp(index_tip['x'], [mx, 1.0 - mx], [0, screen_w])
             y = np.interp(index_tip['y'], [my, 1.0 - my], [0, screen_h])
 
@@ -441,7 +464,10 @@ class VisionWorker(QObject):
                 filtered_x = self.filter_x(curr_time, x)
                 filtered_y = self.filter_y(curr_time, y)
                 self._cursor_pos = (filtered_x, filtered_y)
-            pyautogui.moveTo(int(self._cursor_pos[0]), int(self._cursor_pos[1]), _pause=False)
+            try:
+                pyautogui.moveTo(int(self._cursor_pos[0]), int(self._cursor_pos[1]), _pause=False)
+            except Exception as e:
+                logger.debug(f"Cursor move exception: {e}")
 
         # ── Interaction Logic (Click/Drag) ──
         current_time = time.time()

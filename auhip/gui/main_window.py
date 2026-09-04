@@ -1,28 +1,36 @@
 import asyncio
 import numpy as np
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QApplication
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QStackedWidget,
+    QApplication,
+)
 from PyQt6.QtCore import Qt
 
 from auhip.core.event_bus import event_bus
 import auhip.gui.theme as theme_module
 from auhip.gui.theme import COLORS, STATE_COLORS
 from auhip.gui.components.nav_bar import NavBar
+from auhip.gui.components.ambient_voice_view import AmbientVoiceView
 from auhip.gui.components.left_panel import LeftPanel
 from auhip.gui.components.center_panel import CenterPanel
-from auhip.gui.components.right_panel import RightPanel
-from auhip.gui.components.debug_panel import DebugPanel
+from auhip.gui.components.cockpit.cockpit_view import CockpitView
 
 
 class AuhipMainWindow(QMainWindow):
-    def __init__(self, fsm, mic=None, vision_worker=None, hide_on_standby=False):
+    def __init__(self, fsm, mic=None, vision_worker=None, hide_on_standby=False, tts=None):
         super().__init__()
         self._fsm = fsm
+        self._tts = tts
         self._vision_worker = vision_worker
         self._dark_mode = False
         self.hide_on_standby = hide_on_standby
 
         self.setWindowTitle("auhip")
-        self.setMinimumSize(1200, 760)
+        self.setMinimumSize(1260, 800)
         self.setStyleSheet(theme_module.STYLESHEET)
 
         self._build_ui()
@@ -39,32 +47,72 @@ class AuhipMainWindow(QMainWindow):
         self.nav_bar = NavBar()
         root_layout.addWidget(self.nav_bar)
 
-        # 2. Main Body
-        body = QWidget()
-        body.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
-        body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(12, 12, 12, 10)
-        body_layout.setSpacing(12)
+        # 2. Central Stacked View (Aesthetic HUD vs Functional Cockpit)
+        self.stack = QStackedWidget()
 
+        # Page 0: Aesthetic Voice View (Reference ChatGPT Voice visual)
+        self.ambient_voice_view = AmbientVoiceView()
+        self.ambient_voice_view.toggle_mode_requested.connect(self.toggle_ui_mode)
+        self.stack.addWidget(self.ambient_voice_view)
 
-        self.left_panel = LeftPanel()
-        body_layout.addWidget(self.left_panel)
+        # Page 1: Next-Gen Cockpit View (White Editorial Aesthetic)
+        self.cockpit_view = CockpitView(self._fsm, self._vision_worker)
+        self.stack.addWidget(self.cockpit_view)
 
-        self.center_panel = CenterPanel(self._vision_worker)
-        body_layout.addWidget(self.center_panel, 1)
+        # Legacy aliases for backwards compatibility with tests / handlers
+        self.left_panel = self.cockpit_view.status_card
+        self.center_panel = self.cockpit_view.conversation_workspace
+        self.right_panel = self.cockpit_view.history_card
+        self.debug_panel = self.cockpit_view.debug_drawer
+        if self._tts:
+            self.debug_panel.set_tts_instance(self._tts)
+        if self._fsm and hasattr(self._fsm, 'speech_recognizer'):
+            self.debug_panel.set_speech_recognizer(self._fsm.speech_recognizer)
 
-        self.right_panel = RightPanel()
-        body_layout.addWidget(self.right_panel)
-
-        root_layout.addWidget(body, 1)
-
-        # 3. Debug Panel
-        self.debug_panel = DebugPanel(self._fsm)
-        root_layout.addWidget(self.debug_panel)
+        # Default to Aesthetic Voice HUD (Page 0) per test contract
+        self.stack.setCurrentIndex(0)
+        root_layout.addWidget(self.stack, 1)
 
         self.setCentralWidget(root)
         self._root_widget = root
-        self._body_widget = body
+        self._body_widget = self.cockpit_view
+
+        self.set_ui_mode(0)
+
+    def toggle_ui_mode(self):
+        """Toggle between Page 0 (Aesthetic Voice HUD) and Page 1 (Functional Cockpit)."""
+        new_index = 1 if self.stack.currentIndex() == 0 else 0
+        self.set_ui_mode(new_index)
+
+    def set_ui_mode(self, index: int):
+        """Sets the active UI mode directly (0: Aesthetic HUD, 1: Cockpit)."""
+        self.stack.setCurrentIndex(index)
+        self.nav_bar.update_mode_button(index)
+        if index == 0:
+            # Voice HUD has its own floating top pill dock
+            self.nav_bar.hide()
+            self.debug_panel.hide()
+        else:
+            # Cockpit has full nav bar and debug controls
+            self.nav_bar.show()
+            self.debug_panel.show()
+
+    def keyPressEvent(self, event):
+        """Global shortcut Ctrl+Tab or F2 toggles between Voice HUD and Cockpit, Escape cancels."""
+        if event.key() == Qt.Key.Key_F2 or (
+            event.modifiers() == Qt.KeyboardModifier.ControlModifier
+            and event.key() == Qt.Key.Key_Tab
+        ):
+            self.toggle_ui_mode()
+            event.accept()
+        elif event.key() == Qt.Key.Key_Escape:
+            import asyncio
+            from auhip.core.event_bus import event_bus
+            asyncio.create_task(event_bus.publish("ENTER_SLEEP_MODE", {}))
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
 
     def _connect_events(self):
         mappings = {
@@ -83,6 +131,10 @@ class AuhipMainWindow(QMainWindow):
             "MINIMIZE_WINDOW":   self._on_minimize_window,
             "APP_EXIT":          self._on_app_exit,
             "TOGGLE_THEME":      self._on_toggle_theme,
+            "TOGGLE_UI_MODE":    self._on_toggle_ui_mode,
+            "SET_UI_MODE":       self._on_set_ui_mode,
+            "TTS_STARTED":       self._on_tts_started,
+            "TTS_FINISHED":      self._on_tts_finished,
         }
         for event, handler in mappings.items():
             event_bus.subscribe(event, handler)
@@ -120,10 +172,15 @@ class AuhipMainWindow(QMainWindow):
 
         # Delegate to individual panels that maintain their own stylesheets
         self.nav_bar.refresh_theme(dark)
-        self.left_panel.refresh_theme()
-        self.center_panel.refresh_theme(dark)
-        self.right_panel.refresh_theme()
-        self.debug_panel.refresh_theme()
+        self.ambient_voice_view.set_dark_mode(dark)
+
+    async def _on_toggle_ui_mode(self, data: dict):
+        self.toggle_ui_mode()
+
+    async def _on_set_ui_mode(self, data: dict):
+        mode = data.get("mode", 0)
+        idx = 1 if (mode == 1 or str(mode).lower() in ("cockpit", "functional")) else 0
+        self.set_ui_mode(idx)
 
 
     # ── State Events ──────────────────────────────────────────────────────────
@@ -132,8 +189,9 @@ class AuhipMainWindow(QMainWindow):
         state, label = data["state"], data["label"]
         color = STATE_COLORS.get(state, COLORS["text_muted"])
 
-        self.left_panel.state_panel.set_state(state, label, data.get("message", ""))
         self.nav_bar.set_status(label, color)
+        self.ambient_voice_view.set_status(state, label)
+        self.cockpit_view.set_state(state, label)
 
         if state == "STANDBY" and self.hide_on_standby:
             self.hide()
@@ -141,21 +199,33 @@ class AuhipMainWindow(QMainWindow):
 
     async def _on_mode_changed(self, data: dict):
         mode = data.get("mode", "")
-        # Auto-show vision in camera/control modes
-        if mode in ("CAMERA_MODE", "CONTROL_MODE") and self.center_panel.vision_panel.isHidden():
-            self.center_panel.vision_panel.show()
-            if self._vision_worker:
-                self._vision_worker.start()
+        self.cockpit_view.handle_mode_changed(mode)
 
     async def _on_speech_recognized(self, data: dict):
-        self.center_panel.transcript.add_text(data["text"], "USER")
+        text = data.get("text", "")
+        self.ambient_voice_view.show_transcript(text, is_user=True)
+        self.cockpit_view.add_user_speech(text)
 
     async def _on_auhip_response(self, data: dict):
-        self.center_panel.response.add_response(data["text"], data.get("type", "response"))
-        self.center_panel.transcript.add_text(data["text"], "auhip")
+        text = data.get("text", "")
+        self.ambient_voice_view.show_transcript(text, is_user=False)
+        self.cockpit_view.add_assistant_response(text)
 
     async def _on_command_executed(self, data: dict):
-        self.right_panel.history_panel.add_entry(data["command"], data.get("response"))
+        cmd = data.get("command", "")
+        self.cockpit_view.add_command_history(cmd, data.get("response", ""))
+        self.ambient_voice_view.set_last_command(cmd)
+
+    async def _on_tts_started(self, data: dict):
+        self.ambient_voice_view.set_speaking(True)
+        self.cockpit_view.set_tts_active(True, speaking=True)
+        if "clean_text" in data:
+            self.ambient_voice_view.show_transcript(data["clean_text"], is_user=False)
+
+    async def _on_tts_finished(self, data: dict):
+        is_muted = getattr(self._tts, 'is_muted', False) if self._tts else False
+        self.ambient_voice_view.set_speaking(False)
+        self.cockpit_view.set_tts_active(not is_muted, speaking=False)
 
     async def _on_home_activated(self, data: dict):
         self.showNormal()
@@ -163,23 +233,17 @@ class AuhipMainWindow(QMainWindow):
         self.activateWindow()
 
     async def _on_toggle_vision(self, data: dict):
-        panel = self.center_panel.vision_panel
-        if panel.isHidden():
-            panel.show()
-            if self._vision_worker:
-                self._vision_worker.start()
+        if self.cockpit_view.center_deck.currentIndex() == 1:
+            self.cockpit_view.switch_deck(0)
         else:
-            panel.hide()
+            self.cockpit_view.handle_mode_changed("CAMERA_MODE")
 
     async def _on_set_vision_state(self, data: dict):
         state = data.get("state", True)
-        panel = self.center_panel.vision_panel
-        if state and panel.isHidden():
-            panel.show()
-            if self._vision_worker:
-                self._vision_worker.start()
-        elif not state and not panel.isHidden():
-            panel.hide()
+        if state:
+            self.cockpit_view.handle_mode_changed("CAMERA_MODE")
+        else:
+            self.cockpit_view.switch_deck(0)
 
     async def _on_toggle_fullscreen(self, data: dict):
         if self.isFullScreen():
@@ -212,12 +276,12 @@ class AuhipMainWindow(QMainWindow):
         # count=0 is a reset signal (e.g. sent when Voice Mode is entered)
         if data.get("count", -1) == 0:
             self._snap_count = 0
-            self.left_panel.update_snaps(0)
+            self.cockpit_view.update_snaps(0)
             return
         if not hasattr(self, '_snap_count'): self._snap_count = 0
         self._snap_count = (self._snap_count % 2) + 1
-        self.left_panel.update_snaps(self._snap_count)
+        self.cockpit_view.update_snaps(self._snap_count)
 
     def feed_audio(self, chunk):
-        energy = float(np.sqrt(np.mean(chunk ** 2)))
-        self.center_panel.waveform.add_energy(energy)
+        self.ambient_voice_view.feed_audio(chunk)
+        self.cockpit_view.feed_audio(chunk)

@@ -8,4 +8,6 @@ skills
 .env.example
 jarvis.log
 auhip.log
-.pytest_cache
+.pytest_cache
+data/
+scratch/*.json

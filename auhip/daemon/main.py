@@ -11,6 +11,7 @@ from auhip.daemon.ipc_server import ipc_server
 from auhip.audio.microphone import Microphone
 from auhip.audio.snap_detector import SnapDetector
 from auhip.audio.speech_recognition import SpeechRecognizer
+from auhip.audio.tts import TextToSpeech
 from auhip.core.state_machine import AuhipStateMachine
 from auhip.core.agent import AuhipAgent
 from auhip.vision.worker import VisionWorker
@@ -52,16 +53,13 @@ async def main():
     # Hardware & State Initialization
     mic = Microphone()
     snap_detector = SnapDetector()
-    
-    # In V2, we should lazy load SpeechRecognizer via ServiceManager, 
-    # but for now we keep compatibility with FSM.
-    # Future enhancement (Phase 1 part 2): refactor FSM to request speech_recognizer from service_manager
     speech_recognizer = SpeechRecognizer()
+    tts = TextToSpeech()
     
     agent = AuhipAgent()
-    fsm = AuhipStateMachine(speech_recognizer, agent, mic, snap_detector)
+    fsm = AuhipStateMachine(speech_recognizer, agent, mic, snap_detector, tts=tts)
 
-    # Initialize Vosk Model asynchronously in a thread to prevent blocking
+    # Initialize speech recognition model asynchronously in a thread to prevent blocking
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, speech_recognizer.initialize)
 
@@ -83,6 +81,7 @@ async def main():
         await fsm.stop()
         snap_detector.stop()
         mic.stop()
+        tts.stop()
         await ipc_server.stop()
         await event_bus.stop()
         await service_manager.stop_monitor()

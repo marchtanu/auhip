@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import Dict, Any, Optional, List
 
@@ -45,11 +46,48 @@ class HybridLLMRouter:
             if hasattr(provider, "close"):
                 await provider.close()
 
+    async def generate_json(self, prompt: str, schemas: Optional[List[dict]] = None) -> str:
+        """
+        Generates structured JSON directly using the local or cloud model.
+        Used by PlannerAgent for Acyclic Action Graph synthesis.
+        """
+        req = LLMRequest(
+            prompt=prompt,
+            history=[Message(role="user", content=prompt)],
+            available_tools=self.tool_manager.get_schemas(),
+            require_structured=True
+        )
+        if await self.local_provider.is_healthy():
+            resp = await self.local_provider.generate_structured(req)
+            if resp and resp.intent != "error":
+                return resp.response
+
+        if await self.cloud_provider.is_healthy():
+            resp = await self.cloud_provider.generate_structured(req)
+            if resp and resp.intent != "error":
+                return resp.response
+
+        # Graceful default plan if LLM is offline
+        return json.dumps({
+            "goal": prompt,
+            "nodes": [
+                {
+                    "id": "step1",
+                    "tool_name": "list_workspace_files",
+                    "arguments": {},
+                    "dependencies": [],
+                    "verification_step": "Inspect workspace files"
+                }
+            ]
+        })
+
     async def execute(self, user_text: str) -> str:
         """
         Orchestrates an end-to-end command request. Prioritizes local engine inference,
         triggers sandboxed internal tool execution, and falls back to cloud providers safely.
         """
+        from auhip.core.agents.memory import memory_agent
+
         prompt = user_text.strip()
         if not prompt:
             return ""
@@ -59,10 +97,20 @@ class HybridLLMRouter:
         # 1. Update working context window with system rules and new user command
         sys_text = PromptBuilder.build_system_prompt(self.current_mode)
         
+        # Check long-term memory for relevant past context and ground prompt
+        try:
+            memories = await memory_agent.search_memory(prompt, limit=2)
+            if memories:
+                mem_notes = "; ".join([m.get("text", "") for m in memories if m.get("text")])
+                if mem_notes:
+                    sys_text = f"{sys_text}\nRelevant Memory Context: {mem_notes}"
+        except Exception as e:
+            logger.debug(f"Memory retrieval skipped: {e}")
+
         # Ensure system instructions are present and up-to-date
         self.context_manager.refresh_system_message(sys_text)
-            
         self.context_manager.append(Message(role="user", content=prompt))
+        memory_agent.add_session_message("user", prompt)
 
         # 2. Prepare structured target generation payload request
         req = LLMRequest(
@@ -103,7 +151,10 @@ class HybridLLMRouter:
 
         # Safety catchall for total neural connection failure
         if not response:
-            return "Neural processing error. Command execution aborted safely."
+            return (
+                "I'm currently unable to reach the local AI engine (Ollama) or the cloud model. "
+                "Please ensure Ollama is running ('ollama serve') or verify your network connection."
+            )
 
         logger.info(f"Finalized structural resolution: Intent='{response.intent}', Confidence={response.confidence:.2f}, Tool={response.tool_name}")
 
@@ -129,5 +180,21 @@ class HybridLLMRouter:
             if final_answer:
                 self.context_manager.append(Message(role="assistant", content=final_answer))
 
-        return final_answer or "Execution complete."
+        result_text = final_answer or "Execution complete."
+        memory_agent.add_session_message("assistant", result_text)
+        
+        # Asynchronously persist exchange into long-term memory
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                memory_agent.add_long_term_memory(
+                    f"User: {prompt}\nAssistant: {result_text[:250]}",
+                    metadata={"mode": self.current_mode}
+                )
+            )
+        except Exception:
+            pass
+
+        return result_text
+
 

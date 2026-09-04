@@ -15,6 +15,7 @@ class DebugPanel(QWidget):
         self._fsm = fsm
         self._mic_instance = None # Set later
         self._mic_enabled = True
+        self._tts_instance = None
 
         # Dark card styling (Claude code-window-card aesthetic)
         self.setObjectName("DebugPanel")
@@ -25,7 +26,7 @@ class DebugPanel(QWidget):
                 border-radius: 0px;
             }}
         """)
-        self.setFixedHeight(140)
+        self.setFixedHeight(148)
 
 
         layout = QHBoxLayout(self)
@@ -54,6 +55,14 @@ class DebugPanel(QWidget):
         )
         self._mic_check.toggled.connect(self._toggle_mic)
         left_layout.addWidget(self._mic_check)
+
+        self._tts_check = QCheckBox("Voice output (TTS)")
+        self._tts_check.setChecked(True)
+        self._tts_check.setStyleSheet(
+            f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; spacing: 6px;"
+        )
+        self._tts_check.toggled.connect(self._toggle_tts)
+        left_layout.addWidget(self._tts_check)
         
         # Hardware Selection
         self.hw_label = QLabel("Hardware")
@@ -241,6 +250,35 @@ class DebugPanel(QWidget):
         """)
         self.save_btn.clicked.connect(self._apply_wake_phrase)
         cfg_layout.addWidget(self.save_btn)
+
+        # Voice Selector & Test Button
+        self.voice_lbl = QLabel("Voice:")
+        self.voice_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-left: 8px;")
+        cfg_layout.addWidget(self.voice_lbl)
+
+        self.tts_voice_select = QComboBox()
+        self.tts_voice_select.setStyleSheet(self._combo_style())
+        self.tts_voice_select.addItem("Jarvis (UK Male)", "en-GB-RyanNeural")
+        self.tts_voice_select.addItem("Christopher (US Male)", "en-US-ChristopherNeural")
+        self.tts_voice_select.addItem("Guy (US Male)", "en-US-GuyNeural")
+        self.tts_voice_select.addItem("Aria (US Female)", "en-US-AriaNeural")
+        self.tts_voice_select.addItem("Jenny (US Female)", "en-US-JennyNeural")
+        self.tts_voice_select.addItem("SAPI5 (Offline)", "offline")
+        self.tts_voice_select.currentIndexChanged.connect(self._on_tts_voice_changed)
+        cfg_layout.addWidget(self.tts_voice_select)
+
+        self._tts_test_btn = QPushButton("Test")
+        self._tts_test_btn.setFixedWidth(40)
+        self._tts_test_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['border_dark']}; border: 1px solid {COLORS['border_dark']};
+                border-radius: 4px; color: {COLORS['text_on_dark']};
+                padding: 2px 6px; font-size: 11px;
+            }}
+            QPushButton:hover {{ background-color: {COLORS['accent']}; color: white; }}
+        """)
+        self._tts_test_btn.clicked.connect(self._test_tts)
+        cfg_layout.addWidget(self._tts_test_btn)
 
         cfg_layout.addStretch()
         btn_layout_outer.addWidget(cfg_container)
@@ -520,6 +558,41 @@ class DebugPanel(QWidget):
             self._log_event("Wake phrase unchanged (empty input).")
 
     def set_mic_instance(self, mic): self._mic_instance = mic
+    def set_speech_recognizer(self, recognizer): self._speech_recognizer = recognizer
+
+    def set_tts_instance(self, tts):
+        """Bind the TTS engine instance to GUI controls."""
+        self._tts_instance = tts
+        if self._tts_instance and hasattr(self, '_tts_check'):
+            self._tts_check.setChecked(not self._tts_instance.is_muted)
+            current_voice = getattr(self._tts_instance, 'voice', '')
+            for i in range(self.tts_voice_select.count()):
+                if self.tts_voice_select.itemData(i) == current_voice:
+                    self.tts_voice_select.setCurrentIndex(i)
+                    break
+
+    def _toggle_tts(self, checked: bool):
+        if self._tts_instance:
+            self._tts_instance.set_muted(not checked)
+            self._log_event(f"Voice output {'enabled' if checked else 'muted'}")
+
+    def _on_tts_voice_changed(self, index: int):
+        voice_id = self.tts_voice_select.currentData()
+        if not self._tts_instance or not voice_id:
+            return
+        if voice_id == "offline":
+            self._tts_instance.set_engine("pyttsx3")
+            self._log_event("TTS engine set to Offline (pyttsx3)")
+        else:
+            self._tts_instance.set_engine("edge")
+            self._tts_instance.set_voice(voice_id)
+            self._log_event(f"TTS voice set to: {self.tts_voice_select.currentText()}")
+
+    def _test_tts(self):
+        if self._tts_instance:
+            self._log_event("Playing voice test...")
+            asyncio.create_task(self._tts_instance.speak("Voice output operational, sir."))
+
     def log(self, msg: str): self._log_event(msg)
     @property
     def mic_enabled(self) -> bool: return self._mic_enabled
@@ -537,11 +610,17 @@ class DebugPanel(QWidget):
         self._mic_check.setStyleSheet(
             f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; spacing: 6px;"
         )
+        if hasattr(self, '_tts_check'):
+            self._tts_check.setStyleSheet(
+                f"color: {COLORS['text_on_dark_muted']}; font-size: 12px; spacing: 6px;"
+            )
         self.hw_label.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-top: 5px;")
         
         self.cam_select.setStyleSheet(self._combo_style())
         self.mic_select.setStyleSheet(self._combo_style())
         self.func_select.setStyleSheet(self._combo_style())
+        if hasattr(self, 'tts_voice_select'):
+            self.tts_voice_select.setStyleSheet(self._combo_style())
         
         self.div1.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
         self.div2.setStyleSheet(f"background: {COLORS['border_dark']}; border: none;")
@@ -551,12 +630,15 @@ class DebugPanel(QWidget):
         self.skill_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
         self.cfg_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; text-transform: uppercase;")
         self.wake_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px;")
+        if hasattr(self, 'voice_lbl'):
+            self.voice_lbl.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; margin-left: 8px;")
         self.log_title.setStyleSheet(f"color: {COLORS['text_on_dark_muted']}; font-size: 11px; letter-spacing: 0.3px;")
         
         self._wake_input.setStyleSheet(
             f"background: {COLORS['border_dark']}; border: 1px solid {COLORS['border_dark']};"
             f"border-radius: 4px; color: {COLORS['text_on_dark']}; font-size: 11px; padding: 2px 8px;"
         )
+
         self.save_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {COLORS['accent']}; border: none;
