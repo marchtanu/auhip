@@ -25,7 +25,7 @@ class State(Enum):
 STATE_LABELS = {
     State.STANDBY:          "Standby",
     State.SNAP_DETECTED:    "Snap Detected",
-    State.WAITING_WAKE_WORD: "Say 'Daddy Home'",
+    State.WAITING_WAKE_WORD: "Say 'Wake Up'",
     State.VOICE_MODE:       "Voice Mode",
     State.PROCESSING:       "Processing",
     State.CAMERA_MODE:      "Camera Mode",
@@ -192,7 +192,7 @@ class AuhipStateMachine:
         text = await self.speech_recognizer.listen_for_command(
             timeout=config.WAKE_WORD_TIMEOUT,
             phrase_time_limit=config.WAKE_WORD_TIMEOUT,
-            grammar=[config.WAKE_PHRASE, config.EXIT_PHRASE],
+            grammar=list(set([config.WAKE_PHRASE, "wake up", "daddy home", config.EXIT_PHRASE])),
             validator=self.agent.is_valid_command,
             mic=self.mic
         )
@@ -200,7 +200,7 @@ class AuhipStateMachine:
         if text:
             await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
 
-        if text and config.WAKE_PHRASE in text.lower():
+        if text and (config.WAKE_PHRASE in text.lower() or "wake up" in text.lower() or "daddy home" in text.lower()):
             await self._enter_voice_mode()
         elif text and (text.strip().lower() == config.EXIT_PHRASE or "terminate program" in text.lower()):
             # Only allow exit if we came from SLEEP mode as per user request
@@ -305,12 +305,12 @@ class AuhipStateMachine:
 
                 if clean_text == config.EXIT_PHRASE or "terminate program" in clean_text:
                     await event_bus.publish("AUHIP_RESPONSE", {
-                        "text": "Exit command ignored. You must put me to sleep ('goodbye jojo') before exiting.",
+                        "text": f"Exit command ignored. You must put me to sleep ('{config.SHUTDOWN_PHRASE}') before exiting.",
                         "type": "warning"
                     })
                     continue
 
-                if config.SHUTDOWN_PHRASE in clean_text or config.GOODNIGHT_PHRASE in clean_text:
+                if config.SHUTDOWN_PHRASE in clean_text or config.GOODNIGHT_PHRASE in clean_text or "goodbye jojo" in clean_text or "good night" in clean_text:
                     await self._on_enter_sleep_mode({})
                     return
 
@@ -429,7 +429,7 @@ class AuhipStateMachine:
 
             if text and self.state == State.CAMERA_MODE:
                 await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
-                if config.SHUTDOWN_PHRASE in text or "goodnight" in text.lower():
+                if config.SHUTDOWN_PHRASE in text or "goodnight" in text.lower() or "good night" in text.lower() or "goodbye jojo" in text.lower():
                     await self._on_enter_sleep_mode({})
                     break
                 elif any(kw in text.lower() for kw in ["camera off", "vision off", "close camera", "stop camera"]):

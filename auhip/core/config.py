@@ -18,8 +18,8 @@ class Config:
     SNAP_WINDOW_TIMEOUT: float = 2.0
 
     # Activation Phrases
-    WAKE_PHRASE: str = "daddy home"
-    SHUTDOWN_PHRASE: str = "goodbye jojo"
+    WAKE_PHRASE: str = os.getenv("WAKE_PHRASE", "wake up")
+    SHUTDOWN_PHRASE: str = os.getenv("SHUTDOWN_PHRASE", "good night")
     GOODNIGHT_PHRASE: str = "goodnight"
     EXIT_PHRASE: str = "exit"
 

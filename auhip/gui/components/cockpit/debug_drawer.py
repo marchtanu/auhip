@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from auhip.core.state_machine import State
+from auhip.core.config import config
 
 
 class DebugControlsDrawer(QFrame):
@@ -249,7 +250,7 @@ class DebugControlsDrawer(QFrame):
         col3.addLayout(run_box)
 
         # Quick wake phrase info
-        info_lbl = QLabel("Wake phrase: <b>daddy home</b> · Barge-In: <b>Active</b>")
+        info_lbl = QLabel(f"Wake phrase: <b>{config.WAKE_PHRASE}</b> · Barge-In: <b>Active</b>")
         info_lbl.setFont(QFont("Inter", 9))
         info_lbl.setStyleSheet("color: #777169;")
         col3.addWidget(info_lbl)

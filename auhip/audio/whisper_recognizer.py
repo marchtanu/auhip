@@ -18,7 +18,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 DEFAULT_INITIAL_PROMPT = (
-    "AUHIP executive assistant. Voice commands: daddy home, goodbye jojo, open camera, "
+    "AUHIP executive assistant. Voice commands: wake up, good night, daddy home, goodbye jojo, open camera, "
     "control mode, air mouse, cockpit, workspace, analyze my project, view directory tree, "
     "search codebase, list tasks, add task, complete task, stock, weather, YouTube Music."
 )
