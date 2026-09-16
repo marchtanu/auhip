@@ -33,7 +33,11 @@ class OllamaProvider(BaseLLMProvider):
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Lazy-init a reusable aiohttp session to avoid per-request TCP overhead."""
-        if self._session is None or self._session.closed:
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+        if self._session is None or self._session.closed or (curr_loop and getattr(self._session, '_loop', None) != curr_loop):
             self._session = aiohttp.ClientSession(timeout=self.timeout)
         return self._session
 
