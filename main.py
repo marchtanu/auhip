@@ -117,6 +117,8 @@ async def main(mode="direct"):
     # ── 4. Launch Mode Loop ──────────────────────────────────────────────────
     if mode == "direct":
         window.show()  # Display GUI window immediately on launch
+        window.raise_()
+        window.activateWindow()
         asyncio.create_task(fsm._enter_voice_mode())
     else:
         window.hide()  # Hidden background listener mode

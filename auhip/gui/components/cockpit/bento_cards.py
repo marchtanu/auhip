@@ -11,8 +11,11 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 
+from auhip.core.second_brain import second_brain
+
+
 class PrioritiesCard(QFrame):
-    """Bento Card 1: Prioritized Task List with status badge and quick footer."""
+    """Bento Card 1: Live Second Brain Priorities (Acting Queues, Coursework Deadlines, Overdue Alerts)."""
 
     view_tasks_clicked = pyqtSignal()
 
@@ -32,6 +35,37 @@ class PrioritiesCard(QFrame):
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(6)
 
+        # Query Second Brain live data
+        self.items = []
+        try:
+            acting = second_brain.get_next_acting_queue()
+            if acting:
+                call_t = acting.get("callTime", "TBD")
+                date_t = acting.get("date", "")
+                title_t = acting.get("title", "Shoot")
+                self.items.append(("🎬", f"{title_t}: Call {call_t} ({date_t})", "#0C0A09"))
+        except Exception:
+            pass
+
+        try:
+            acad = second_brain.get_academic_status()
+            next_d = acad.get("next_deadline")
+            if next_d:
+                c_code = next_d.get("courseCode", "ICT")
+                d_name = next_d.get("name", "Assignment")[:24]
+                self.items.append(("🎓", f"[{c_code}] {d_name}", "#4E4E4E"))
+            overdue_cnt = acad.get("overdue_count", 0)
+            if overdue_cnt > 0:
+                self.items.append(("⚠️", f"{overdue_cnt} Overdue Assignments", "#DC2626"))
+        except Exception:
+            pass
+
+        if not self.items:
+            self.items = [
+                ("🟣", "Second Brain Online", "#0C0A09"),
+                ("⚪", "Ready for commands", "#777169"),
+            ]
+
         # Header Row: PRIORITIES + Count badge
         header = QHBoxLayout()
         title = QLabel("PRIORITIES")
@@ -39,7 +73,7 @@ class PrioritiesCard(QFrame):
         title.setStyleSheet("color: #777169; letter-spacing: 0.6px; border: none; background: transparent;")
         header.addWidget(title)
 
-        badge = QLabel("3")
+        badge = QLabel(str(len(self.items)))
         badge.setFont(QFont("Inter", 9, QFont.Weight.Bold))
         badge.setStyleSheet("""
             background: #F0EFED;
@@ -54,20 +88,13 @@ class PrioritiesCard(QFrame):
 
         layout.addSpacing(2)
 
-        # Task Items with colored status bullets
-        self.items = [
-            ("🟣", "Finish AUHIP architecture", "#0C0A09"),
-            ("🟡", "Meeting tomorrow — 10:00", "#4E4E4E"),
-            ("⚪", "Review StageLink deployment", "#777169"),
-        ]
-
         for dot, text, color in self.items:
             row = QHBoxLayout()
             row.setSpacing(6)
             row.setContentsMargins(0, 0, 0, 0)
 
             dot_lbl = QLabel(dot)
-            dot_lbl.setStyleSheet("font-size: 8px; border: none; background: transparent;")
+            dot_lbl.setStyleSheet("font-size: 10px; border: none; background: transparent;")
             row.addWidget(dot_lbl)
 
             txt_lbl = QLabel(text)
@@ -80,7 +107,7 @@ class PrioritiesCard(QFrame):
         layout.addStretch(1)
 
         # Footer Link
-        footer_btn = QPushButton("View all tasks →")
+        footer_btn = QPushButton("Sync Second Brain →")
         footer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         footer_btn.setFont(QFont("Inter", 10, QFont.Weight.Medium))
         footer_btn.setStyleSheet("""
@@ -100,7 +127,7 @@ class PrioritiesCard(QFrame):
 
 
 class InProgressCard(QFrame):
-    """Bento Card 2: Current active project, agent count, and progress bar."""
+    """Bento Card 2: Current active project, startup sprint progress, and deliverables."""
 
     open_workspace_clicked = pyqtSignal()
 
@@ -134,13 +161,33 @@ class InProgressCard(QFrame):
         header.addStretch()
         layout.addLayout(header)
 
+        # Pull live startup telemetry from Second Brain
+        proj_name = "StageLink Marketplace"
+        proj_sub = "Co-Founder & Full-Stack Engineer"
+        sprint_lbl = "Sprint 5: Omise Escrow & Auth"
+        progress_val = 70
+
+        try:
+            startups = second_brain.get_startup_status()
+            if startups:
+                s0 = startups[0]
+                proj_name = s0.get("name", proj_name)
+                metrics = s0.get("metrics", {})
+                talents = metrics.get("onboardedTalents", 52)
+                orgs = metrics.get("betaOrganizers", 14)
+                proj_sub = f"{talents} Talents · {orgs} Organizers · Launch {s0.get('targetLaunch', 'Oct 15')}"
+                sprint_lbl = s0.get("currentSprint", sprint_lbl)[:34]
+                progress_val = s0.get("progressPercent", progress_val)
+        except Exception:
+            pass
+
         # Project Name + Subtitle
-        proj_title = QLabel("AUHIP Project")
-        proj_title.setFont(QFont("Inter", 14, QFont.Weight.DemiBold))
+        proj_title = QLabel(f"🚀 {proj_name}")
+        proj_title.setFont(QFont("Inter", 13, QFont.Weight.DemiBold))
         proj_title.setStyleSheet("color: #0C0A09; border: none; background: transparent;")
         layout.addWidget(proj_title)
 
-        agent_sub = QLabel("2 agents running")
+        agent_sub = QLabel(proj_sub)
         agent_sub.setFont(QFont("Inter", 10))
         agent_sub.setStyleSheet("color: #777169; border: none; background: transparent;")
         layout.addWidget(agent_sub)
@@ -149,12 +196,12 @@ class InProgressCard(QFrame):
 
         # Progress row
         p_row = QHBoxLayout()
-        p_lbl = QLabel("Refactoring event architecture")
+        p_lbl = QLabel(sprint_lbl)
         p_lbl.setFont(QFont("Inter", 10))
         p_lbl.setStyleSheet("color: #4E4E4E; border: none; background: transparent;")
         p_row.addWidget(p_lbl)
 
-        p_val = QLabel("68%")
+        p_val = QLabel(f"{progress_val}%")
         p_val.setFont(QFont("Inter", 10, QFont.Weight.DemiBold))
         p_val.setStyleSheet("color: #0C0A09; border: none; background: transparent;")
         p_row.addWidget(p_val)
@@ -162,7 +209,7 @@ class InProgressCard(QFrame):
 
         bar = QProgressBar()
         bar.setRange(0, 100)
-        bar.setValue(68)
+        bar.setValue(progress_val)
         bar.setTextVisible(False)
         bar.setFixedHeight(5)
         bar.setStyleSheet("""
@@ -181,7 +228,7 @@ class InProgressCard(QFrame):
         layout.addStretch(1)
 
         # Footer Link
-        footer_btn = QPushButton("Open workspace →")
+        footer_btn = QPushButton("Open Second Brain Explorer →")
         footer_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         footer_btn.setFont(QFont("Inter", 10, QFont.Weight.Medium))
         footer_btn.setStyleSheet("""
@@ -245,7 +292,13 @@ class SystemOverviewCard(QFrame):
         model_row.addWidget(state_lbl)
         model_row.addStretch()
 
-        model_tag = QLabel("Qwen 7B")
+        model_name = "qwen2.5-coder:3b"
+        try:
+            from auhip.core.llm.config import llm_config
+            model_name = llm_config.LOCAL_MODEL_NAME
+        except Exception:
+            pass
+        model_tag = QLabel(model_name)
         model_tag.setFont(QFont("Inter", 9, QFont.Weight.DemiBold))
         model_tag.setStyleSheet("""
             background: #F0EFED;

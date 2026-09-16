@@ -77,5 +77,11 @@ class Config:
     # Hardware Optimization
     CAMERA_ON_DEMAND: bool = True  # Only activate camera & MediaPipe when in gesture/camera mode
 
+    # Second Brain Integration (march_workspace as Single Source of Truth)
+    SECOND_BRAIN_PATH: str = os.getenv(
+        "SECOND_BRAIN_PATH",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "march_workspace"))
+    )
+
 config = Config()
 

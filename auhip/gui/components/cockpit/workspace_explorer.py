@@ -162,34 +162,54 @@ class WorkspaceExplorer(QFrame):
         layout.addLayout(split_layout, 1)
 
     def refresh_files(self):
-        """Scans workspace directory and populates file list."""
+        """Scans Second Brain workspace directory and populates file list."""
         self.file_list.clear()
-        target_dirs = ["auhip", "docs", "tests"]
+        from auhip.core.config import config
+        root_dir = config.SECOND_BRAIN_PATH if os.path.exists(config.SECOND_BRAIN_PATH) else "."
+        self._current_root = os.path.realpath(root_dir)
+        self.title_lbl.setText(f"📁 Second Brain Explorer ({os.path.basename(self._current_root)})")
+
+        target_dirs = ["data", "university", "ai_tools", "media_production", "operations", "documents", "coding"]
         found = []
 
         for d in target_dirs:
-            if os.path.exists(d):
-                for root, _, files in os.walk(d):
+            full_d = os.path.join(self._current_root, d)
+            if os.path.exists(full_d):
+                for root, dirs, files in os.walk(full_d):
+                    dirs[:] = [sub for sub in dirs if sub not in (".git", ".venv", "__pycache__", "node_modules", ".next")]
                     for f in files:
-                        if f.endswith((".py", ".md", ".json")):
-                            rel = os.path.relpath(os.path.join(root, f), ".")
+                        if f.endswith((".py", ".md", ".json", ".ts", ".tsx", ".bat")):
+                            rel = os.path.relpath(os.path.join(root, f), self._current_root)
                             found.append(rel.replace("\\", "/"))
 
-        # Add root files
-        for f in ["main.py", "PROJECT_DOCUMENTATION.md"]:
-            if os.path.exists(f):
+        # Fallback to local assistant files if second brain has few files
+        if not found:
+            for d in ["auhip", "docs", "tests"]:
+                if os.path.exists(d):
+                    for root, _, files in os.walk(d):
+                        for f in files:
+                            if f.endswith((".py", ".md", ".json")):
+                                rel = os.path.relpath(os.path.join(root, f), ".")
+                                found.append(rel.replace("\\", "/"))
+
+        # Add root markdown files
+        for f in ["README.md", "AGENTS.md", "SYSTEM_ANALYSIS_CLAUDE.md"]:
+            if os.path.exists(os.path.join(self._current_root, f)):
                 found.insert(0, f)
 
         for f in sorted(found):
-            icon = "📄 " if f.endswith(".py") else "📝 " if f.endswith(".md") else "⚙ "
+            icon = "📄 " if f.endswith((".py", ".ts", ".tsx")) else "📝 " if f.endswith(".md") else "⚙ "
             item = QListWidgetItem(f"{icon}{f}")
             item.setData(Qt.ItemDataRole.UserRole, f)
             self.file_list.addItem(item)
 
     def load_file(self, file_path: str):
         """Loads and displays file content in code viewer."""
-        clean_path = file_path.replace("\\", "/")
-        self.file_path_lbl.setText(f"📄 {clean_path}")
+        root_dir = getattr(self, "_current_root", ".")
+        clean_path = os.path.join(root_dir, file_path) if not os.path.isabs(file_path) else file_path
+        clean_path = os.path.realpath(clean_path).replace("\\", "/")
+        rel_label = os.path.relpath(clean_path, root_dir).replace("\\", "/")
+        self.file_path_lbl.setText(f"📄 {rel_label}")
 
         if os.path.exists(clean_path):
             try:

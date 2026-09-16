@@ -28,6 +28,9 @@ from auhip.skills import (
     summarize_notebook, generate_audio_overview,
     # YouTube Music
     open_youtube_music, search_youtube_music,
+    # Second Brain Operations (march_workspace)
+    sync_workspace, get_acting_call_time, get_university_deadlines,
+    get_financial_status, get_startup_sprint, search_second_brain,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,7 @@ class AuhipAgent:
         self._register_media_tools(ToolSchema)
         self._register_organizer_tools(ToolSchema)
         self._register_workspace_tools(ToolSchema)
+        self._register_second_brain_tools(ToolSchema)
 
     def _register_system_tools(self, ToolSchema):
         """Volume, browser, screenshot, system status, sleep."""
@@ -376,6 +380,38 @@ class AuhipAgent:
                 }
             ),
             generate_audio_overview
+        )
+
+    def _register_second_brain_tools(self, ToolSchema):
+        """Second Brain operations for march_workspace (Moodle, Acting, Freelance, Startups)."""
+        self.tool_manager.register_tool(
+            ToolSchema("sync_workspace", "Executes master sync in march_workspace to scrape Moodle and recalibrate schedules."),
+            sync_workspace
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("get_acting_call_time", "Retrieves upcoming Me Mind Y acting shooting queues, call times, location, and conflicts."),
+            get_acting_call_time
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("get_university_deadlines", "Reports upcoming Mahidol ICT coursework deadlines, overdue items, and next exams."),
+            get_university_deadlines
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("get_financial_status", "Reports freelance cash flow and revenue progress toward the 75,000 THB goal."),
+            get_financial_status
+        )
+        self.tool_manager.register_tool(
+            ToolSchema("get_startup_sprint", "Reports active sprints and completion progress for StageLink and BlackBox startups."),
+            get_startup_sprint
+        )
+        self.tool_manager.register_tool(
+            ToolSchema(
+                "search_second_brain",
+                "Searches documents, syllabi, notes, and operations files across the Second Brain.",
+                parameters={"query": {"type": "string", "description": "Search keyword or topic."}},
+                required=["query"]
+            ),
+            search_second_brain
         )
 
     # ── Mode ──────────────────────────────────────────────────────────────────

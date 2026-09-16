@@ -30,6 +30,9 @@ from auhip.skills import (
     summarize_notebook, generate_audio_overview,
     # YouTube Music
     open_youtube_music, search_youtube_music,
+    # Second Brain Operations (march_workspace)
+    sync_workspace, get_acting_call_time, get_university_deadlines,
+    get_financial_status, get_startup_sprint,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,6 +150,13 @@ CANONICAL_ROUTES: List[Tuple[List[str], Callable]] = [
     (["time", "what time"], tell_time),
     (["date", "today", "what day", "what's today", "what is today"], tell_date),
     (["status", "cpu", "ram"], system_status),
+
+    # ── Second Brain Operations (march_workspace) ──
+    (["sync workspace", "update workspace", "update my workspace", "recalibrate data", "sync data", "pull data"], sync_workspace),
+    (["call time", "acting schedule", "next shoot", "next call time", "filming queue", "acting call"], get_acting_call_time),
+    (["university deadlines", "homework due", "any homework", "academic status", "check deadlines", "moodle deadlines", "coursework due"], get_university_deadlines),
+    (["financial status", "freelance status", "cash flow", "revenue status", "how much made", "monthly revenue"], get_financial_status),
+    (["startup sprint", "stagelink sprint", "stagelink status", "startup status", "startup progress"], get_startup_sprint),
 
     # ── YouTube Music ──
     (["youtube music", "open music", "open youtube music"], open_youtube_music),

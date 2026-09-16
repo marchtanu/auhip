@@ -10,4 +10,6 @@ jarvis.log
 auhip.log
 .pytest_cache
 data/
-scratch/*.json
+scratch/
+auhip_out.txt
+launch_err.txt

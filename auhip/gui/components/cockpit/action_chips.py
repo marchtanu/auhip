@@ -99,10 +99,10 @@ class ContinueConversationBar(QWidget):
         chips_row.setSpacing(8)
 
         chips_data = [
-            ("⬡", "Analyze", "my AUHIP project", "Analyze my AUHIP project and find performance bottlenecks", "#2563EB"),
-            ("⬡", "Explain", "event architecture", "Explain how the AUHIP event architecture works", "#059669"),
-            ("⬡", "Improve", "performance", "Give suggestions to improve performance and reduce latency", "#D97706"),
-            ("⬡", "Find", "unused files", "Scan the workspace and list unused Python files", "#DC2626"),
+            ("🔄", "Sync", "Second Brain", "Update my workspace and sync Moodle", "#2563EB"),
+            ("🎬", "Acting", "next call time", "What is my next acting call time and schedule?", "#DC2626"),
+            ("🎓", "Coursework", "urgent deadlines", "Check my university deadlines and upcoming exams", "#059669"),
+            ("💰", "Revenue", "freelance & MRR", "What is my freelance cash flow and monthly revenue status?", "#D97706"),
         ]
 
         for icon, title, sub, prompt, color in chips_data:
