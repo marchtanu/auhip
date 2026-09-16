@@ -23,7 +23,9 @@ class OllamaProvider(BaseLLMProvider):
         self.base_url = llm_config.OLLAMA_BASE_URL.rstrip("/")
         self.model = llm_config.LOCAL_MODEL_NAME
         self.timeout = aiohttp.ClientTimeout(total=llm_config.LOCAL_TIMEOUT_SECONDS)
-        self.supports_tools = True
+        # AUHIP embeds tool schemas directly into system guidance JSON prompt.
+        # Disabling Ollama native tool payload avoids Ollama suppressing conversational content on chat turns.
+        self.supports_tools = False
         self._cached_health = None
         self._last_health_check = 0.0
         self._health_check_cooldown = 15.0 # Check health every 15s max

@@ -180,7 +180,7 @@ class HybridLLMRouter:
             if final_answer:
                 self.context_manager.append(Message(role="assistant", content=final_answer))
 
-        result_text = final_answer or "Execution complete."
+        result_text = final_answer.strip() if (final_answer and final_answer.strip()) else "I'm listening, sir. How can I assist you?"
         memory_agent.add_session_message("assistant", result_text)
         
         # Asynchronously persist exchange into long-term memory
