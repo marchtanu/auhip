@@ -2,8 +2,15 @@ import asyncio
 import logging
 import os
 import time
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    _HAS_WATCHDOG = True
+except ImportError:
+    Observer = None
+    FileSystemEventHandler = object
+    _HAS_WATCHDOG = False
 
 from auhip.core.event_bus import event_bus, EventPriority
 
@@ -11,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 class WorkspaceEventHandler(FileSystemEventHandler):
     def __init__(self, loop):
-        super().__init__()
+        if _HAS_WATCHDOG:
+            super().__init__()
         self.loop = loop
         self.supported_extensions = {
             ".txt", ".md", ".py", ".js", ".ts", ".json", ".csv"
@@ -19,7 +27,14 @@ class WorkspaceEventHandler(FileSystemEventHandler):
 
     def _should_index(self, path: str) -> bool:
         _, ext = os.path.splitext(path)
-        return ext.lower() in self.supported_extensions
+        if ext.lower() not in self.supported_extensions:
+            return False
+        normalized = os.path.normpath(path).replace("\\", "/").lower()
+        parts = set(normalized.split("/"))
+        if parts.intersection({".git", ".auhip", ".venv", "__pycache__", "node_modules"}):
+            return False
+        filename = os.path.basename(normalized)
+        return not (filename.startswith(".env") or filename == "memory_records.json")
 
     def _trigger_index(self, path: str, action: str):
         if self._should_index(path):
@@ -58,6 +73,9 @@ class WorkspaceIndexer:
         event_bus.subscribe("FILE_CHANGED", self._process_file_change)
 
     def start(self):
+        if not _HAS_WATCHDOG:
+            logger.info("watchdog not installed — workspace live file watcher disabled.")
+            return
         if self.observer is None:
             loop = asyncio.get_running_loop()
             event_handler = WorkspaceEventHandler(loop)
@@ -90,7 +108,10 @@ class WorkspaceIndexer:
                 if content.strip():
                     await memory_agent.add_long_term_memory(
                         text=content,
-                        metadata={"source": path, "type": "file_chunk"}
+                        metadata={"source": path, "type": "knowledge_chunk"},
+                        memory_type="knowledge_chunk",
+                        source=path,
+                        confidence=0.8,
                     )
                     logger.debug(f"Indexed updated file: {path}")
                     

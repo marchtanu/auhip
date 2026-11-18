@@ -34,7 +34,7 @@ class ManagedService:
                 if asyncio.iscoroutinefunction(self.factory):
                     self.instance = await self.factory()
                 else:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     self.instance = await loop.run_in_executor(None, self.factory)
                     
                 self.state = ServiceState.RUNNING

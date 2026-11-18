@@ -4,6 +4,11 @@ These rules govern how AI coding assistants should interact with and modify the 
 
 > **Start here:** Read `.agents/architecture.md` for the full file map, state machine, and event bus reference.
 
+## Cross-Agent Context and Handoff
+- Read `AUHIP-context.md` before starting repository work; it is the shared product and project context for AUHIP agents.
+- After delegated AUHIP work is completed or blocked, use `.agents/skills/auhip-handoff/SKILL.md` and submit a receipt with the original task ID.
+- Keep durable shared context updates concise. Put task-specific files and check results in the JSON receipt.
+
 ## 1. Architectural Philosophy
 - **Infrastructure First:** Do not prioritize flashy UI over reliable infrastructure. 
 - **Modular Design:** Skills should be modular and contained within `auhip/skills/`. The `auhip/core/agent.py` acts as the primary outward-facing agent bridge, delegating logic to `auhip/core/llm/router.py`.

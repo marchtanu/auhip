@@ -130,3 +130,11 @@ class CenterPanel(QWidget):
         self.transcript.refresh_theme()
         self.response.refresh_theme()
 
+    def set_speaking(self, speaking: bool):
+        """Show visual indicator in response card header when speaking."""
+        if speaking:
+            self.r_header.setText("auhip response — 🔊 Speaking...")
+        else:
+            self.r_header.setText("auhip response")
+
+

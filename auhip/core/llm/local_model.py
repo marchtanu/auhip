@@ -23,7 +23,9 @@ class OllamaProvider(BaseLLMProvider):
         self.base_url = llm_config.OLLAMA_BASE_URL.rstrip("/")
         self.model = llm_config.LOCAL_MODEL_NAME
         self.timeout = aiohttp.ClientTimeout(total=llm_config.LOCAL_TIMEOUT_SECONDS)
-        self.supports_tools = True
+        # AUHIP embeds tool schemas directly into system guidance JSON prompt.
+        # Disabling Ollama native tool payload avoids Ollama suppressing conversational content on chat turns.
+        self.supports_tools = False
         self._cached_health = None
         self._last_health_check = 0.0
         self._health_check_cooldown = 15.0 # Check health every 15s max
@@ -31,7 +33,11 @@ class OllamaProvider(BaseLLMProvider):
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Lazy-init a reusable aiohttp session to avoid per-request TCP overhead."""
-        if self._session is None or self._session.closed:
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+        if self._session is None or self._session.closed or (curr_loop and getattr(self._session, '_loop', None) != curr_loop):
             self._session = aiohttp.ClientSession(timeout=self.timeout)
         return self._session
 
@@ -79,7 +85,24 @@ class OllamaProvider(BaseLLMProvider):
         if request.available_tools:
             tool_defs = []
             for t in request.available_tools:
-                tool_defs.append(f"- {t.name}: {t.description}")
+                if isinstance(t, dict):
+                    name = t.get("name", "")
+                    description = t.get("description", "")
+                    properties = t.get("parameters", {})
+                    required = t.get("required", [])
+                else:
+                    name = t.name
+                    description = t.description
+                    properties = getattr(t, "parameters", {}) or {}
+                    required = getattr(t, "required", []) or []
+                parameter_schema = {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                }
+                tool_defs.append(
+                    f"- {name}: {description} Arguments: {json.dumps(parameter_schema, ensure_ascii=False)}"
+                )
             schema_guidance += "\n\nAvailable Tools:\n" + "\n".join(tool_defs)
 
         system_content = schema_guidance if request.require_structured else ""
@@ -105,7 +128,7 @@ class OllamaProvider(BaseLLMProvider):
             "stream": False,
             "options": {
                 "temperature": 0.4, # Balanced warmth for persona fidelity alongside reliable format constraints
-                "num_ctx": 8192    # Expanded window prevents buffer overflows and repetitive hallucination loops
+                "num_ctx": 2048    # Compact context for voice commands — reduces VRAM pressure & TTFT on 3B model
             }
         }
         
@@ -113,15 +136,25 @@ class OllamaProvider(BaseLLMProvider):
         if request.available_tools and self.supports_tools:
             tools_mapped = []
             for t in request.available_tools:
+                if isinstance(t, dict):
+                    name = t.get("name", "")
+                    description = t.get("description", "")
+                    properties = t.get("parameters", {})
+                    required = t.get("required", [])
+                else:
+                    name = t.name
+                    description = t.description
+                    properties = t.parameters
+                    required = t.required
                 tools_mapped.append({
                     "type": "function",
                     "function": {
-                        "name": t.name,
-                        "description": t.description,
+                        "name": name,
+                        "description": description,
                         "parameters": {
                             "type": "object",
-                            "properties": t.parameters,
-                            "required": t.required
+                            "properties": properties,
+                            "required": required
                         }
                     }
                 })

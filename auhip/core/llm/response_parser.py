@@ -8,6 +8,14 @@ logger = logging.getLogger(__name__)
 
 # Heuristic keyword → (intent, tool_name) mapping for broken JSON fallback.
 # Ordered longest-match-first within each group; checked top-down.
+_HEURISTIC_CHAT_INTENTS = [
+    # Simple conversational exchanges that don't need a tool — keep local
+    ["hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+     "how are you", "what's up", "whats up", "thank you", "thanks",
+     "okay", "alright", "sure", "got it", "understood", "nice",
+     "good night", "goodbye", "bye", "see you"],
+]
+
 _HEURISTIC_TOOL_MAP = [
     # Parameterised tools (need argument extraction)
     (["search for", "search google", "google"],  "search_web",    "search_web"),
@@ -135,9 +143,19 @@ class ResponseParser:
                 # Clean up wrapping markdown formatting if returning plain text buffer directly
                 fallback_response = re.sub(r"```[a-z]*", "", raw_text).strip()
 
+            # Give clearly-identified chat intents higher confidence so they stay local
+            # Only tool-inferred heuristics stay at 0.5 (uncertain matching)
+            lower_raw = raw_text.lower()
+            heuristic_confidence = 0.5
+            if not requires_tool:
+                if any(kw in lower_raw for kw in _HEURISTIC_CHAT_INTENTS[0]):
+                    heuristic_confidence = 0.75  # Simple greeting/chat — confidently local
+                else:
+                    heuristic_confidence = 0.65  # Generic chat that passed no tool check
+
             return LLMResponse(
                 intent=intent,
-                confidence=0.5, # Low confidence ensures proper safety escalation checking
+                confidence=heuristic_confidence,
                 requires_tool=requires_tool,
                 tool_name=tool_name,
                 tool_args=tool_args,

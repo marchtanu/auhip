@@ -4,45 +4,58 @@
 
 # ── Light Theme ───────────────────────────────────────────────────────────────
 
+# ── ElevenLabs Editorial Print Theme (from docs/DESIGN.md) ───────────────────
+# Off-white canvas (#f5f5f5), warm near-black ink (#0c0a09), atmospheric pastel orbs
+
+GRADIENT_TOKENS = {
+    "mint":     "#A7E5D3",
+    "peach":    "#F4C5A8",
+    "lavender": "#C8B8E0",
+    "sky":      "#A8C8E8",
+    "rose":     "#E8B8C4",
+}
+
 LIGHT_COLORS = {
     # Surfaces
-    "bg":            "#FFFFFF",
-    "surface":       "#FAFAFA",
-    "panel":         "#FAFAFA",
-    "panel_soft":    "#F4F4F5",
-    "nav":           "#FFFFFF",
-    "dark_card":     "#18181B",
+    "bg":            "#F5F5F5",  # {colors.canvas}
+    "surface":       "#FFFFFF",  # {colors.surface-card}
+    "panel":         "#FFFFFF",  # {colors.surface-card}
+    "panel_soft":    "#FAFAFA",  # {colors.canvas-soft}
+    "surface_strong":"#F0EFED",  # {colors.surface-strong}
+    "nav":           "#F5F5F5",  # {colors.canvas}
+    "dark_card":     "#0C0A09",  # {colors.canvas-deep}
 
-    # Borders - subtle
-    "border":        "#F4F4F5",
-    "border_soft":   "#FAFAFA",
-    "border_dark":   "#E4E4E7",
+    # Hairline borders
+    "border":        "#E7E5E4",  # {colors.hairline}
+    "border_soft":   "#F0EFED",  # {colors.hairline-soft}
+    "border_dark":   "#D6D3D1",  # {colors.hairline-strong}
 
-    # Accent
-    "accent":        "#000000",
-    "accent_hover":  "#3F3F46",
-    "accent_dim":    "#F4F4F5",
+    # Accent (Warm Ink Pill)
+    "accent":        "#292524",  # {colors.primary} Ink Primary
+    "accent_hover":  "#0C0A09",  # {colors.primary-active}
+    "accent_dim":    "#F0EFED",  # {colors.surface-strong}
     "accent_yellow": "#EAB308",
 
-    # Text on light
-    "text":          "#09090B",
-    "text_body":     "#3F3F46",
-    "text_muted":    "#71717A",
-    "text_soft":     "#A1A1AA",
+    # Text
+    "text":          "#0C0A09",  # {colors.ink}
+    "text_body":     "#4E4E4E",  # {colors.body}
+    "text_muted":    "#777169",  # {colors.muted}
+    "text_soft":     "#A8A29E",  # {colors.muted-soft}
 
     # Text on dark
-    "text_on_dark":       "#FAFAFA",
-    "text_on_dark_muted": "#A1A1AA",
+    "text_on_dark":       "#FFFFFF",  # {colors.on-primary}
+    "text_on_dark_muted": "#A8A29E",
 
     # Semantic
-    "success": "#10B981",
+    "success": "#16A34A",  # {colors.semantic-success}
     "warning": "#F59E0B",
-    "danger":  "#EF4444",
+    "danger":  "#DC2626",  # {colors.semantic-error}
 
     # Legacy aliases
-    "processing": "#000000",
-    "shutdown":   "#EF4444",
+    "processing": "#292524",
+    "shutdown":   "#DC2626",
 }
+
 
 # ── Dark Theme ────────────────────────────────────────────────────────────────
 

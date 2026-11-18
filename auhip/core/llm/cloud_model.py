@@ -30,7 +30,11 @@ class GeminiProvider(BaseLLMProvider):
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Lazy-init a reusable aiohttp session to avoid per-request TCP overhead."""
-        if self._session is None or self._session.closed:
+        try:
+            curr_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            curr_loop = None
+        if self._session is None or self._session.closed or (curr_loop and getattr(self._session, '_loop', None) != curr_loop):
             self._session = aiohttp.ClientSession(timeout=self.timeout)
         return self._session
 
@@ -57,7 +61,7 @@ class GeminiProvider(BaseLLMProvider):
                 provider_used="cloud"
             )
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
         
         # Inject structural schemas to enforce structured JSON adherence from Gemini
         schema_guidance = (
@@ -74,6 +78,25 @@ class GeminiProvider(BaseLLMProvider):
             "}\n"
             "Provide ONLY the JSON output without raw markdown fences or conversational preambles."
         )
+
+        if request.available_tools:
+            tool_descriptions = []
+            for tool in request.available_tools:
+                if isinstance(tool, dict):
+                    name = tool.get("name", "")
+                    description = tool.get("description", "")
+                    parameters = tool.get("parameters", {})
+                else:
+                    name = tool.name
+                    description = tool.description
+                    parameters = getattr(tool, "parameters", {}) or {}
+                tool_descriptions.append(
+                    f"- {name}: {description}; parameters: {json.dumps(parameters, ensure_ascii=False)}"
+                )
+            schema_guidance += (
+                "\nAvailable local tools (call only an exact name in this list):\n"
+                + "\n".join(tool_descriptions)
+            )
 
         contents = []
         system_content = ""
@@ -107,7 +130,10 @@ class GeminiProvider(BaseLLMProvider):
         last_error = None
         for attempt in range(llm_config.CLOUD_MAX_RETRIES):
             try:
-                headers = {"Content-Type": "application/json"}
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.api_key,
+                }
                 async with session.post(url, headers=headers, json=payload) as resp:
                     if resp.status != 200:
                         err_text = await resp.text()

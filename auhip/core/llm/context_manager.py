@@ -51,10 +51,10 @@ class ContextManager:
     def _estimate_tokens(self, text: str) -> int:
         """Heuristic token footprint calculation.
 
-        Using ~3 chars/token which better approximates sub-word tokenizers
-        used by smaller local models (Qwen, Phi, etc.).
+        Using ~4 chars/token which accurately bounds sub-word tokenizers
+        for typical conversational English.
         """
-        return len(text) // 3
+        return max(1, len(text) // 4)
 
     def _compress(self):
         """

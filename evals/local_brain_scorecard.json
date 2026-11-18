@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "title": "AUHIP local brain scorecard",
+  "purpose": "Repeatable manual checks for memory recall, source separation, tool selection, and local-only behavior.",
+  "setup": [
+    "Use a disposable AUHIP data directory or back up existing local memory before changing fixtures.",
+    "Set CLOUD_ENABLED=false and verify no cloud request occurs during the local cases.",
+    "Install the configured embedding model with Ollama for semantic retrieval; lexical fallback should still work when embeddings are unavailable.",
+    "Record pass/fail and the returned source labels for every case. Do not score a plausible answer as a pass unless its source is correct."
+  ],
+  "cases": [
+    {
+      "id": "remember-explicit-fact",
+      "prompt": "Remember that I prefer concise voice replies.",
+      "expected_tool": "remember_user_memory",
+      "seed": null,
+      "pass": [
+        "A durable preference is saved with a stable memory ID, source=user, date, and confidence=1.0.",
+        "The confirmation says it was stored locally.",
+        "An ordinary unrelated exchange is not added to durable memory."
+      ]
+    },
+    {
+      "id": "recall-decision",
+      "prompt": "What did I decide about AUHIP's first coding-agent integration?",
+      "expected_tool": "search_user_memories",
+      "seed": {
+        "memory_type": "decision",
+        "source": "user",
+        "text": "Start AUHIP coding-agent integration with the Antigravity CLI, then add Codex app-server support."
+      },
+      "pass": [
+        "The matching decision is returned with its memory ID and source.",
+        "Conversation history, second-brain documents, and task receipts are not presented as personal memories.",
+        "Unrelated or weak matches are omitted."
+      ]
+    },
+    {
+      "id": "search-deadline-document",
+      "prompt": "Find the nearest database systems assignment deadline.",
+      "expected_tool": "search_second_brain or get_university_deadlines",
+      "seed": {
+        "source": "second-brain university document",
+        "text": "DBS assignment 2 is due 2026-10-17 at 23:59."
+      },
+      "pass": [
+        "AUHIP searches the second-brain/document lane or the structured deadlines tool.",
+        "The answer identifies the exact source file or structured deadline record.",
+        "No project-guidance memory or agent receipt is substituted for the user-owned deadline source."
+      ]
+    },
+    {
+      "id": "delegate-coding-task",
+      "prompt": "Ask Antigravity to inspect this workspace and summarize the failing login flow.",
+      "expected_tool": "send_to_antigravity",
+      "seed": null,
+      "pass": [
+        "The dispatch confirmation is shown before the CLI starts.",
+        "The selected workspace is within configured sandbox roots and Antigravity sandbox mode is enabled.",
+        "The completion appears in task history by receipt, not as a durable personal memory."
+      ]
+    },
+    {
+      "id": "cloud-consent-boundary",
+      "prompt": "Use Gemini to summarize this paragraph: local-only check.",
+      "expected_tool": "explicit cloud provider path",
+      "seed": null,
+      "pass": [
+        "With CLOUD_ENABLED=false, AUHIP clearly says cloud is disabled and sends nothing externally.",
+        "With CLOUD_ENABLED=true, only this current prompt is sent; saved memories and prior turns are excluded.",
+        "Without an explicit cloud request, low confidence or local failure never triggers cloud fallback."
+      ]
+    }
+  ]
+}

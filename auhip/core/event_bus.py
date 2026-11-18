@@ -30,12 +30,17 @@ class MultiQueueEventBus:
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._running = False
         self._worker_task = None
+        self._loop = None
 
     def subscribe(self, event_type: str, callback: Callable):
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(callback)
         logger.debug(f"Subscribed to {event_type}")
+
+    def has_subscribers(self, event_type: str) -> bool:
+        """Return whether an event currently has a direct subscriber."""
+        return bool(self._subscribers.get(event_type))
 
     def subscribe_all(self, callback: Callable):
         """Subscribe to ALL events. Callback must accept (event_type: str, data: Any)."""
@@ -56,10 +61,40 @@ class MultiQueueEventBus:
         await self._queue.put(event)
         logger.debug(f"Enqueued {event_type} at priority {priority.name}")
 
+    def publish_sync(self, event_type: str, data: Any = None, priority: EventPriority = EventPriority.NORMAL):
+        """
+        Thread-safe synchronous publishing from worker threads or sync contexts.
+        Schedules event submission into the running asyncio loop or enqueues immediately.
+        """
+        event = PrioritizedEvent(priority=priority, event_type=event_type, data=data)
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+                self._loop = loop
+            except RuntimeError:
+                loop = None
+
+        if loop and loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(self._queue.put(event), loop)
+                return
+            except Exception as e:
+                logger.debug(f"publish_sync run_coroutine_threadsafe failed: {e}")
+
+        try:
+            self._queue.put_nowait(event)
+        except Exception as e:
+            logger.debug(f"publish_sync put_nowait failed: {e}")
+
     def start(self):
         """Start the background worker to process events from the priority queue."""
         if not self._running:
             self._running = True
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = None
             self._worker_task = asyncio.create_task(self._process_queue())
             logger.info("MultiQueueEventBus started.")
 
@@ -78,8 +113,10 @@ class MultiQueueEventBus:
         while self._running:
             try:
                 event: PrioritizedEvent = await self._queue.get()
-                await self._dispatch(event)
-                self._queue.task_done()
+                try:
+                    await self._dispatch(event)
+                finally:
+                    self._queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -91,14 +128,14 @@ class MultiQueueEventBus:
         
         # Dispatch to specific subscribers
         if event.event_type in self._subscribers:
-            for callback in self._subscribers[event.event_type]:
+            for callback in list(self._subscribers.get(event.event_type, [])):
                 if asyncio.iscoroutinefunction(callback):
                     tasks.append(self._safe_invoke_async(callback, event.event_type, event.data))
                 else:
                     self._safe_invoke_sync(callback, event.event_type, event.data)
                     
         # Dispatch to global subscribers
-        for callback in self._global_subscribers:
+        for callback in list(self._global_subscribers):
             if asyncio.iscoroutinefunction(callback):
                 tasks.append(self._safe_invoke_global_async(callback, event.event_type, event.data))
             else:
