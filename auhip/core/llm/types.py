@@ -1,5 +1,33 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from enum import Enum
+
+
+class ToolStatus(str, Enum):
+    SUCCEEDED = "succeeded"
+    DENIED = "denied"
+    FAILED = "failed"
+
+
+@dataclass
+class ToolResult:
+    status: ToolStatus
+    output: Any
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == ToolStatus.SUCCEEDED
+
+    @classmethod
+    def from_output(cls, output: Any) -> "ToolResult":
+        """Adapt legacy skill text until individual skills return structured results."""
+        if isinstance(output, cls):
+            return output
+        if isinstance(output, str):
+            normalized = output.lower().strip()
+            if normalized.startswith(("error", "failed", "security restriction")) or "is disabled." in normalized:
+                return cls(ToolStatus.FAILED, output)
+        return cls(ToolStatus.SUCCEEDED, output)
 
 
 @dataclass
@@ -8,6 +36,7 @@ class ToolSchema:
     description: str
     parameters: Dict[str, Any] = field(default_factory=dict)
     required: List[str] = field(default_factory=list)
+    requires_confirmation: bool = False
 
 
 @dataclass
@@ -35,5 +64,5 @@ class LLMResponse:
 class LLMRequest:
     prompt: str
     history: List[Message] = field(default_factory=list)
-    available_tools: List[ToolSchema] = field(default_factory=list)
+    available_tools: List[Any] = field(default_factory=list)
     require_structured: bool = True

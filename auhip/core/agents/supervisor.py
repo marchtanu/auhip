@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 from typing import Dict, Any, Optional
 from auhip.core.event_bus import event_bus, EventPriority
 from auhip.core.voice_commands import dispatch_local_route
@@ -21,9 +22,12 @@ class SupervisorAgent:
     async def process_goal(self, text: str) -> str:
         """Process a high-level goal from the user."""
         text_lower = text.lower().strip()
+        cloud_requested = self.llm_router.cloud_was_explicitly_requested(text)
+        if cloud_requested and not self.llm_router.cloud_enabled:
+            return "Cloud access is disabled. No prompt was sent outside AUHIP. Enable CLOUD_ENABLED only if you want to allow an explicitly requested cloud task."
         
         # 1. Fast Path: Local Macros & Canonical Routes
-        local_res = await dispatch_local_route(text)
+        local_res = await dispatch_local_route(text, self.tool_manager)
         if local_res:
             logger.info(f"Supervisor handled via local route: '{text}'")
             return local_res
@@ -31,9 +35,12 @@ class SupervisorAgent:
         # 2. Plan Generation Path
         # Determine if the prompt requires multi-step reasoning.
         complex_keywords = ["plan", "organize", "workflow", "extract", "report", "automate", "search workspace"]
-        if any(kw in text_lower for kw in complex_keywords):
+        if any(re.search(r"\b" + re.escape(kw) + r"\b", text_lower) for kw in complex_keywords):
             logger.info("Supervisor delegating to PlannerAgent.")
-            await event_bus.publish("DELEGATE_TO_PLANNER", data={"goal": text})
+            await event_bus.publish(
+                "DELEGATE_TO_PLANNER",
+                data={"goal": text, "allow_cloud": cloud_requested},
+            )
             return "Generating execution plan..."
 
         # 3. Standard Tool Routing Path (Fallback to HybridLLMRouter)
@@ -44,4 +51,3 @@ class SupervisorAgent:
         except Exception as e:
             logger.error(f"Supervisor LLM delegation failed: {e}")
             return "I encountered an error trying to process that."
-

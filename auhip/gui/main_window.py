@@ -7,10 +7,11 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QStackedWidget,
     QApplication,
+    QMessageBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
-from auhip.core.event_bus import event_bus
+from auhip.core.event_bus import event_bus, EventPriority
 import auhip.gui.theme as theme_module
 from auhip.gui.theme import COLORS, STATE_COLORS
 from auhip.gui.components.nav_bar import NavBar
@@ -28,6 +29,7 @@ class AuhipMainWindow(QMainWindow):
         self._vision_worker = vision_worker
         self._dark_mode = False
         self.hide_on_standby = hide_on_standby
+        self._confirmation_dialogs = {}
 
         self.setWindowTitle("auhip")
         self.setMinimumSize(1260, 800)
@@ -108,7 +110,7 @@ class AuhipMainWindow(QMainWindow):
         elif event.key() == Qt.Key.Key_Escape:
             import asyncio
             from auhip.core.event_bus import event_bus
-            asyncio.create_task(event_bus.publish("ENTER_SLEEP_MODE", {}))
+            asyncio.create_task(event_bus.publish("CANCEL_ALL", {}, priority=EventPriority.CRITICAL))
             event.accept()
         else:
             super().keyPressEvent(event)
@@ -127,6 +129,8 @@ class AuhipMainWindow(QMainWindow):
             "SET_VISION_STATE":  self._on_set_vision_state,
             "SET_EYE_STATE":     self._on_set_eye_state,
             "SET_HAND_STATE":    self._on_set_hand_state,
+            "TOOL_CONFIRMATION_REQUESTED": self._on_tool_confirmation_requested,
+            "TOOL_CONFIRMATION_CLOSED": self._on_tool_confirmation_closed,
             "TOGGLE_FULLSCREEN": self._on_toggle_fullscreen,
             "MINIMIZE_WINDOW":   self._on_minimize_window,
             "APP_EXIT":          self._on_app_exit,
@@ -138,6 +142,48 @@ class AuhipMainWindow(QMainWindow):
         }
         for event, handler in mappings.items():
             event_bus.subscribe(event, handler)
+
+    def _on_tool_confirmation_requested(self, data: dict):
+        """Ask the desktop user before a sensitive tool executes."""
+        from auhip.core.llm.tool_manager import resolve_tool_confirmation
+        import json
+
+        request_id = data.get("request_id", "")
+        tool_name = data.get("tool_name", "unknown tool")
+        arguments = dict(data.get("arguments") or {})
+        if "content" in arguments:
+            content = str(arguments["content"])
+            arguments["content"] = f"<content omitted; {len(content)} characters>"
+        details = json.dumps(arguments, ensure_ascii=False, indent=2, default=str)
+        if len(details) > 2500:
+            details = details[:2500] + "\n… (truncated)"
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Confirm AUHIP action")
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setText(f"Allow '{tool_name}' to perform this action?")
+        dialog.setInformativeText(details or "No arguments")
+        dialog.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        dialog.setDefaultButton(QMessageBox.StandardButton.No)
+        dialog.button(QMessageBox.StandardButton.Yes).setText("Approve")
+        dialog.button(QMessageBox.StandardButton.No).setText("Deny")
+        def handle_confirmation_result(result: int):
+            self._confirmation_dialogs.pop(request_id, None)
+            resolve_tool_confirmation(
+                request_id, result == int(QMessageBox.StandardButton.Yes.value)
+            )
+
+        dialog.finished.connect(handle_confirmation_result)
+        self._confirmation_dialogs[request_id] = dialog
+        dialog.open()
+        QTimer.singleShot(60_000, dialog.reject)
+
+    def _on_tool_confirmation_closed(self, data: dict) -> None:
+        dialog = self._confirmation_dialogs.pop(data.get("request_id"), None)
+        if dialog is not None:
+            dialog.reject()
 
     # ── Theme Switching ───────────────────────────────────────────────────────
 

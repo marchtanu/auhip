@@ -4,6 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def is_cloud_enabled() -> bool:
+    """Cloud integrations must honor the same explicit master opt-in."""
+    return os.getenv("CLOUD_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+
 @dataclass
 class Config:
     # Audio
@@ -25,7 +30,7 @@ class Config:
 
     # Speech Recognition Engine
     # Options: "whisper" (recommended), "vosk" (offline fallback), "google" (cloud)
-    STT_ENGINE: str = "whisper"
+    STT_ENGINE: str = os.getenv("STT_ENGINE", "whisper")
 
     # faster-whisper model: "base.en" (recommended, ~0.35s), "small.en", "distil-small.en", "turbo", "base"
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "base.en")
@@ -56,7 +61,7 @@ class Config:
     # Text-to-Speech (TTS) Voice Synthesis
     TTS_ENABLED: bool = True
     # Primary engine: "edge" (natural neural voices) or "pyttsx3" (offline SAPI5)
-    TTS_ENGINE: str = "edge"
+    TTS_ENGINE: str = os.getenv("TTS_ENGINE", "edge")
     # Edge-TTS voice (e.g. "en-GB-RyanNeural" for British Jarvis, "en-US-ChristopherNeural" for US male, "en-US-AriaNeural" for US female)
     TTS_VOICE: str = "en-GB-RyanNeural"
     TTS_RATE: str = "+0%"
@@ -70,6 +75,9 @@ class Config:
 
     # Conversational Flow & Barge-In (OpenAI Voice Mode style)
     BARGE_IN_ENABLED: bool = True
+    # Voice Mode Engine: "gemini_live" (real-time sub-second streaming) or "classic" (offline whisper + local LLM + edge-tts)
+    VOICE_MODE_ENGINE: str = os.getenv("VOICE_MODE_ENGINE", "classic")
+    GEMINI_LIVE_VOICE: str = os.getenv("GEMINI_LIVE_VOICE", "Puck")
     # If False (default), AUHIP remains in continuous Voice Mode without auto-reverting to Standby
     AUTO_STANDBY_ENABLED: bool = False
     CONVERSATION_TIMEOUT_SECONDS: float = 15.0  # Inactivity seconds before Standby (only if AUTO_STANDBY_ENABLED=True)

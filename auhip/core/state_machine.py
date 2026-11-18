@@ -5,7 +5,7 @@ import threading
 import pyautogui
 from enum import Enum, auto
 from .event_bus import event_bus, EventPriority
-from .config import config
+from .config import config, is_cloud_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,14 @@ class AuhipStateMachine:
         self.mic = mic
         self.snap_detector = snap_detector
         self.tts = tts
+        self.gemini_live_engine = None
 
         # Task tracking for cleanup and exception logging
         self._voice_task = None
+        self._command_task = None
+        self._submitted_command_task = None
+        self._command_return_state = State.VOICE_MODE
+        self._stopping = False
         self._active_tasks = set()
         
         # Cooldowns
@@ -91,6 +96,7 @@ class AuhipStateMachine:
     # ── Startup ──────────────────────────────────────────────────────────────
 
     async def start(self):
+        self._stopping = False
         event_bus.subscribe("SNAP_DETECTED", self.on_snap_detected)
         event_bus.subscribe("GESTURE_DETECTED", self.on_gesture_detected)
         event_bus.subscribe("MOTION_DETECTED", self.on_motion_detected)
@@ -106,28 +112,56 @@ class AuhipStateMachine:
         # Temp voice in Camera mode (raised by VisionWorker)
         event_bus.subscribe("TEMP_VOICE_START", self._on_temp_voice_start)
         event_bus.subscribe("TEMP_VOICE_END", self._on_temp_voice_end)
+        event_bus.subscribe("SET_VOICE_MODE_ENGINE", self.on_set_voice_mode_engine)
+        event_bus.subscribe("AUHIP_EXTERNAL_NOTIFICATION", self._on_external_notification)
+        event_bus.subscribe("PROCESS_COMMAND", self._on_process_command)
+        event_bus.subscribe("PROCESS_GOAL", self._on_process_command)
+        event_bus.subscribe("ENTER_VOICE_MODE", self._on_enter_voice_mode_requested)
 
         await self._publish_state("auhip initialized. Waiting for activation.")
         logger.info("State Machine started in STANDBY.")
 
     async def stop(self):
         """Cancel all pending tasks for clean shutdown."""
+        self._stopping = True
         self._stop_voice_loop()
         if self.tts:
             self.tts.stop()
         if self._voice_task:
             self._voice_task.cancel()
-        for task in list(self._active_tasks):
+        pending = list(self._active_tasks)
+        for task in pending:
             if not task.done():
                 task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        for event_type, callback in (
+            ("SNAP_DETECTED", self.on_snap_detected), ("GESTURE_DETECTED", self.on_gesture_detected),
+            ("MOTION_DETECTED", self.on_motion_detected), ("ATTENTION_CHANGED", self.on_attention_changed),
+            ("GAZE_CHANGED", self.on_gaze_changed), ("CANCEL_ALL", self.on_cancel_all),
+            ("ENTER_CAMERA_MODE", self._on_enter_camera_mode), ("ENTER_CONTROL_MODE", self._on_enter_control_mode),
+            ("ENTER_SLEEP_MODE", self._on_enter_sleep_mode), ("EXIT_SUB_MODE", self._on_exit_sub_mode),
+            ("TEMP_VOICE_START", self._on_temp_voice_start), ("TEMP_VOICE_END", self._on_temp_voice_end),
+            ("SET_VOICE_MODE_ENGINE", self.on_set_voice_mode_engine),
+            ("AUHIP_EXTERNAL_NOTIFICATION", self._on_external_notification),
+            ("PROCESS_COMMAND", self._on_process_command), ("PROCESS_GOAL", self._on_process_command),
+            ("ENTER_VOICE_MODE", self._on_enter_voice_mode_requested),
+        ):
+            event_bus.unsubscribe(event_type, callback)
         logger.info("State Machine cleanup complete.")
 
     def _stop_voice_loop(self):
         """Signal the voice loop to terminate immediately."""
         self._voice_cancel_event.set()
+        if self.gemini_live_engine:
+            self.gemini_live_engine.stop()
+            self.gemini_live_engine = None
         if self.tts:
             self.tts.stop()
-        if self._voice_task and not self._voice_task.done():
+        if (self._command_task and not self._command_task.done()
+                and self._command_task is not asyncio.current_task()):
+            self._command_task.cancel()
+        if (self._voice_task and not self._voice_task.done()
+                and self._voice_task is not asyncio.current_task()):
             self._voice_task.cancel()
         logger.debug("Voice loop stop signal sent.")
 
@@ -225,12 +259,23 @@ class AuhipStateMachine:
     # ── Voice Mode ────────────────────────────────────────────────────────────
 
     async def _enter_voice_mode(self, is_return: bool = False):
+        if self._stopping or self.state == State.SHUTDOWN:
+            return
+        if (self._command_task and not self._command_task.done()
+                and self._command_task is not asyncio.current_task()):
+            self._command_task.cancel()
+            await asyncio.gather(self._command_task, return_exceptions=True)
         # Cancel any existing voice task before starting a new one
-        if self._voice_task and not self._voice_task.done():
+        if (self._voice_task and not self._voice_task.done()
+                and self._voice_task is not asyncio.current_task()):
+            self._voice_cancel_event.set()
             self._voice_task.cancel()
             try:
                 await self._voice_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+            except Exception:
                 pass
 
         self.state = State.VOICE_MODE
@@ -238,24 +283,109 @@ class AuhipStateMachine:
             self.snap_detector.stop() # Silence snaps during voice interaction
         await event_bus.publish("SET_VISION_MODE", {"mode": "none"}) # Optimization: Stop camera hardware
         
-        greeting = "Back to voice mode. Listening." if is_return else "Voice mode activated. How can I help you, sir?"
-        state_msg = "Voice Mode — Listening" if is_return else "Voice Mode — How can I help?"
-
-        await self._publish_state(state_msg)
-        self._voice_cancel_event.clear()
+        # Executor-based recognition retains its old, signalled event while winding down.
+        self._voice_cancel_event = threading.Event()
         await event_bus.publish("HOME_ACTIVATED", {})
-        await event_bus.publish("AUHIP_RESPONSE", {
-            "text": greeting,
-            "type": "info" if is_return else "success",
-        })
         # Reset the snap dot UI counter to zero
         await event_bus.publish("SNAP_DETECTED", {"time": 0, "count": 0}, priority=EventPriority.LOW)
 
-        if self.tts:
-            await self.tts.speak(greeting)
+        engine = getattr(config, "VOICE_MODE_ENGINE", "classic")
+        if engine == "gemini_live":
+            approved = False
+            manager = getattr(self.agent, "tool_manager", None)
+            if is_cloud_enabled() and manager is not None:
+                approved = await manager.request_confirmation(
+                    "gemini_live_session",
+                    {"shared_data": "Live microphone audio and this session's conversation are sent to Google until Live mode ends. Saved memories and local identity files are not sent."},
+                    allow_unattended=False,
+                )
+            if not approved:
+                engine = "classic"
+                await event_bus.publish("AUHIP_RESPONSE", {
+                    "text": "Gemini Live was not enabled or approved. Using local voice mode.",
+                    "type": "info",
+                })
+        if engine == "gemini_live":
+            state_msg = "⚡ Gemini Live"
+            await self._publish_state(state_msg)
+            self._voice_task = self._spawn_task(self._gemini_live_voice_loop(), name="gemini_live_loop")
+        else:
+            greeting = "Back to voice mode. Listening." if is_return else "Voice mode activated. How can I help you, sir?"
+            state_msg = "Voice Mode — Listening" if is_return else "Voice Mode — How can I help?"
+            await self._publish_state(state_msg)
+            await event_bus.publish("AUHIP_RESPONSE", {
+                "text": greeting,
+                "type": "info" if is_return else "success",
+            })
+            if self.tts:
+                await self.tts.speak(greeting)
+            self._voice_task = self._spawn_task(self._voice_loop(), name="voice_loop")
 
-        # BUG-01 FIX: Dedicated voice loop coroutine wrapped and assigned as the voice task
-        self._voice_task = self._spawn_task(self._voice_loop(), name="voice_loop")
+    async def _gemini_live_voice_loop(self):
+        try:
+            if not is_cloud_enabled():
+                raise PermissionError("Cloud access is disabled.")
+            from ..audio.gemini_live_engine import GeminiLiveEngine
+            logger.info("Starting Gemini Live streaming voice loop in AUHIP...")
+            self.gemini_live_engine = GeminiLiveEngine(
+                mic=self.mic,
+                voice_name=getattr(config, "GEMINI_LIVE_VOICE", "Puck"),
+                session_approved=True,
+            )
+            await self.gemini_live_engine.run(initial_greeting="Gemini Live mode is active.")
+        except asyncio.CancelledError:
+            logger.info("Gemini Live voice loop cancelled.")
+            raise
+        except Exception as e:
+            logger.error(f"Gemini Live voice error: {e}. Falling back to classic voice loop.", exc_info=True)
+            if self.state == State.VOICE_MODE:
+                await self._voice_loop()
+        finally:
+            if self.gemini_live_engine:
+                self.gemini_live_engine.stop()
+                self.gemini_live_engine = None
+
+    def on_set_voice_mode_engine(self, data: dict) -> None:
+        engine = data.get("engine", "classic")
+        if engine not in {"classic", "gemini_live"}:
+            return
+        config.VOICE_MODE_ENGINE = engine
+        logger.info(f"Switched VOICE_MODE_ENGINE to: {engine}")
+        if self.state == State.VOICE_MODE:
+            self._spawn_task(self._enter_voice_mode(is_return=True), name="switch_voice_engine")
+
+    def _on_enter_voice_mode_requested(self, data: dict) -> None:
+        if self.state != State.SHUTDOWN:
+            self._spawn_task(self._enter_voice_mode(is_return=True), name="enter_voice_mode")
+
+    def _on_process_command(self, data: dict) -> None:
+        if not isinstance(data, dict) or self.state == State.SHUTDOWN:
+            return
+        text = data.get("command", data.get("text"))
+        if not isinstance(text, str) or not text.strip() or len(text) > 12_000:
+            return
+        if ((self._command_task and not self._command_task.done())
+                or (self._submitted_command_task and not self._submitted_command_task.done())):
+            self._spawn_task(event_bus.publish("AUHIP_RESPONSE", {
+                "text": "An action is already running. Cancel it before starting another.", "type": "info",
+            }), name="command_busy")
+            return
+        self._submitted_command_task = self._spawn_task(
+            self._run_submitted_command(text.strip()), name="submitted_command",
+        )
+
+    async def _run_submitted_command(self, text: str) -> None:
+        resume_voice = self.state == State.VOICE_MODE
+        if resume_voice:
+            self._stop_voice_loop()
+            if self._voice_task:
+                await asyncio.gather(self._voice_task, return_exceptions=True)
+        await event_bus.publish("SPEECH_RECOGNIZED", {"text": text})
+        try:
+            await self._process_command(text)
+        finally:
+            if resume_voice and self.state == State.VOICE_MODE and not self._stopping:
+                await self._enter_voice_mode(is_return=True)
 
     async def _voice_loop(self):
         auto_standby = getattr(config, "AUTO_STANDBY_ENABLED", False)
@@ -314,6 +444,15 @@ class AuhipStateMachine:
                     await self._on_enter_sleep_mode({})
                     return
 
+                if "gemini live" in clean_text or "live mode" in clean_text:
+                    config.VOICE_MODE_ENGINE = "gemini_live"
+                    await event_bus.publish("AUHIP_RESPONSE", {
+                        "text": "Switching to Gemini Live mode.",
+                        "type": "success",
+                    })
+                    await self._enter_voice_mode(is_return=True)
+                    return
+
                 if clean_text in ("that's all", "thats all", "standby", "go to standby", "stop listening"):
                     await event_bus.publish("AUHIP_RESPONSE", {
                         "text": "Standing by, sir.",
@@ -339,11 +478,27 @@ class AuhipStateMachine:
             logger.info(f"Voice mode loop ended. Current state: {self.state.name}")
 
     async def _process_command(self, command_text: str):
+        if self._command_task and not self._command_task.done():
+            return
         prev_state = self.state
+        self._command_return_state = prev_state
         self.state = State.PROCESSING
         await self._publish_state(f"Processing: '{command_text}'")
 
-        response = await self.agent.execute(command_text)
+        self._command_task = self._spawn_task(self.agent.execute(command_text), name="command_execution")
+        try:
+            response = await self._command_task
+        except asyncio.CancelledError:
+            if self.state == State.PROCESSING:
+                self.state = prev_state
+            if asyncio.current_task().cancelling():
+                raise
+            return
+        except Exception:
+            logger.exception("Command execution failed")
+            response = "The action failed. Please check the logs."
+        finally:
+            self._command_task = None
 
         await event_bus.publish("COMMAND_EXECUTED", {
             "command": command_text,
@@ -371,6 +526,27 @@ class AuhipStateMachine:
                 # DO NOT spawn a new task here!
             else:
                 await self._publish_state(f"Back to {self.state.name}.")
+
+    async def _on_external_notification(self, data: dict):
+        """Show and speak a short status sent by a local coding-agent handoff."""
+        text = data.get("text", "")
+        if not isinstance(text, str):
+            return
+        announcement = " ".join(text.split())[:500]
+        if not announcement:
+            return
+
+        await event_bus.publish("AUHIP_RESPONSE", {"text": announcement, "type": "info"})
+        self._spawn_task(self._speak_external_notification(announcement), name="handoff_notification")
+
+    async def _speak_external_notification(self, text: str):
+        try:
+            if self.gemini_live_engine and await self.gemini_live_engine.announce(text):
+                return
+            if self.tts:
+                await self.tts.speak(text)
+        except Exception:
+            logger.exception("Could not speak an external handoff notification.")
 
     # ── Camera Mode ───────────────────────────────────────────────────────────
 
@@ -648,17 +824,15 @@ class AuhipStateMachine:
         """Triggered by two-hand open palm gesture."""
         if self.tts:
             self.tts.stop()
+        if self._command_task and not self._command_task.done():
+            self._command_task.cancel()
         if self.state == State.PROCESSING:
-            self.state = State.VOICE_MODE
-            await self._publish_state("Operations cancelled.")
+            self.state = self._command_return_state
+            await self._publish_state("Cancellation requested.")
             await event_bus.publish("AUHIP_RESPONSE", {
-                "text": "Operations cancelled by user gesture.",
+                "text": "Cancellation requested. Completed actions and system calls already running cannot be undone.",
                 "type": "warning"
             })
-            # BUG-06 FIX: Ensure voice loop is running so assistant is listening again
-            self._voice_cancel_event.clear()
-            if not self._voice_task or self._voice_task.done():
-                self._voice_task = self._spawn_task(self._voice_loop(), name="voice_loop")
         elif self.state == State.WAITING_WAKE_WORD:
             self.state = State.STANDBY
             await self._publish_state("Cancelled. Returning to standby.")

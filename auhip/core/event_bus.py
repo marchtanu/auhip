@@ -38,6 +38,10 @@ class MultiQueueEventBus:
         self._subscribers[event_type].append(callback)
         logger.debug(f"Subscribed to {event_type}")
 
+    def has_subscribers(self, event_type: str) -> bool:
+        """Return whether an event currently has a direct subscriber."""
+        return bool(self._subscribers.get(event_type))
+
     def subscribe_all(self, callback: Callable):
         """Subscribe to ALL events. Callback must accept (event_type: str, data: Any)."""
         self._global_subscribers.append(callback)
@@ -109,8 +113,10 @@ class MultiQueueEventBus:
         while self._running:
             try:
                 event: PrioritizedEvent = await self._queue.get()
-                await self._dispatch(event)
-                self._queue.task_done()
+                try:
+                    await self._dispatch(event)
+                finally:
+                    self._queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception as e:

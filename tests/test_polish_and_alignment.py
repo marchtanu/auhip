@@ -4,8 +4,10 @@ import sys
 import inspect
 import tempfile
 import json
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
-WORKSPACE = r"d:\Desktop\Code\personal\project\Jarvis_demo"
+WORKSPACE = str(Path(__file__).resolve().parents[1])
 if WORKSPACE not in sys.path:
     sys.path.insert(0, WORKSPACE)
 
@@ -35,17 +37,24 @@ def test_voice_commands_single_source():
 
     # Test route matching via dispatch_local_route
     async def run_dispatch():
+        from auhip.core.llm.tool_manager import ToolManager
+        from auhip.core.llm.types import ToolSchema
+        manager = ToolManager()
+        manager.register_tool(ToolSchema("get_weather", "weather", {"city": {"type": "string"}}), AsyncMock(return_value="Weather in Tokyo: fixture"))
+        manager.register_tool(ToolSchema("tell_time", "time"), voice_commands.tell_time)
+        manager.register_tool(ToolSchema("view_directory_tree", "tree"), voice_commands.view_directory_tree)
         res_cockpit = await voice_commands.dispatch_local_route("switch to cockpit")
         assert res_cockpit and "cockpit" in res_cockpit.lower(), f"Unexpected cockpit response: {res_cockpit}"
 
-        res_tree = await voice_commands.dispatch_local_route("view directory tree")
-        assert res_tree and ("Jarvis_demo" in res_tree or "Directory tree" in res_tree or "auhip" in res_tree), f"Unexpected directory tree response: {res_tree}"
+        with patch("auhip.skills.organizer._get_workspace_root", return_value=WORKSPACE):
+            res_tree = await voice_commands.dispatch_local_route("view directory tree", manager)
+        assert res_tree and "main.py" in res_tree, f"Unexpected directory tree response: {res_tree}"
 
-        res_time = await voice_commands.dispatch_local_route("what time")
+        res_time = await voice_commands.dispatch_local_route("what time", manager)
         assert res_time and ("AM" in res_time or "PM" in res_time or ":" in res_time), f"Unexpected time response: {res_time}"
 
         # Parameterised route
-        res_weather = await voice_commands.dispatch_local_route("weather in Tokyo")
+        res_weather = await voice_commands.dispatch_local_route("weather in Tokyo", manager)
         assert res_weather and ("Tokyo" in res_weather or "weather" in res_weather.lower()), f"Unexpected weather response: {res_weather}"
 
     asyncio.run(run_dispatch())
@@ -85,6 +94,7 @@ async def test_tool_manager_registration_and_bridge():
     res = await tool_registry.execute_in_sandbox("view_directory_tree", {"path": "docs", "max_depth": 1})
     assert "SYSTEM_AUDIT.md" in res or "docs" in res, f"view_directory_tree failed: {res}"
     print("  [PASS] ARCH-02: All 38 workspace/notebook tools registered and ToolRegistry bridge active.")
+    await agent.close()
 
 async def test_memory_agent_persistence_and_search():
     print("Testing ARCH-03: MemoryAgent persistence and fallback keyword search...")
@@ -95,15 +105,16 @@ async def test_memory_agent_persistence_and_search():
         mem = MemoryAgent(db_path=tmpdir, json_path=test_store)
         
         # Store memories
-        await mem.add_long_term_memory("User prefers dark mode and minimal logging", {"category": "preference"}, importance=0.9)
-        await mem.add_long_term_memory("Project workspace is Jarvis_demo with 38 agentic tools", {"category": "fact"}, importance=0.8)
+        mem._embed = AsyncMock(return_value=None)
+        await mem.remember("User prefers dark mode and minimal logging", memory_type="preference")
+        await mem.remember("Project workspace is AUHIP with agentic tools", memory_type="project")
         await mem.add_long_term_memory("Today we completed the system audit fixes", {"category": "conversation"}, importance=0.7)
         
         # Verify file persistence
         assert os.path.exists(test_store), "Memory JSON store was not created!"
         with open(test_store, "r", encoding="utf-8") as f:
             data = json.load(f)
-        assert len(data) == 3, f"Expected 3 records in JSON, got {len(data)}"
+        assert len(data) == 2, f"Expected only 2 curated records in JSON, got {len(data)}"
         
         # Test recall with keyword matching
         results = await mem.search_memory("UI dark mode preferences", limit=2)
@@ -130,6 +141,7 @@ async def test_supervisor_and_planner_execution():
     assert "Exiting" in res or "Local route" in res or "Executing" in res or "mode" in res, f"Supervisor failed local route: {res}"
 
     print("  [PASS] ARCH-01: SupervisorAgent and PlannerAgent properly wired.")
+    await agent.close()
 
 def test_event_loop_deprecation_guards():
     print("Testing asyncio event loop deprecation fixes...")
@@ -137,7 +149,7 @@ def test_event_loop_deprecation_guards():
     from auhip.core import service_manager
     from auhip.audio import speech_recognition
     
-    src_tm = inspect.getsource(tool_manager.ToolManager.execute)
+    src_tm = inspect.getsource(tool_manager.ToolManager.execute_result)
     assert "asyncio.get_event_loop()" not in src_tm, "Deprecating get_event_loop() in ToolManager!"
     
     src_sm = inspect.getsource(service_manager.ManagedService.get)

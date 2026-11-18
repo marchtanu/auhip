@@ -257,6 +257,26 @@ class AmbientVoiceView(QWidget):
         """)
         np_layout.addWidget(sun_btn)
 
+        # Gemini Live / Classic engine toggle pill button
+        self.live_btn = QPushButton("⚡ Live")
+        self.live_btn.setFixedHeight(28)
+        self.live_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.live_btn.setFont(QFont("Inter", 10, QFont.Weight.DemiBold))
+        self.live_btn.setStyleSheet("""
+            QPushButton {
+                background: #4338CA;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 14px;
+                padding: 0 10px;
+            }
+            QPushButton:hover {
+                background: #3730A3;
+            }
+        """)
+        self.live_btn.clicked.connect(self._toggle_voice_engine)
+        np_layout.addWidget(self.live_btn)
+
         # Cockpit mode toggle button
         self.cockpit_btn = QPushButton("🎛️ Cockpit")
         self.cockpit_btn.setFixedHeight(28)
@@ -475,3 +495,18 @@ class AmbientVoiceView(QWidget):
 
     def feed_audio(self, chunk):
         self.orb_widget.update_audio(chunk)
+
+    def _toggle_voice_engine(self):
+        from auhip.core.config import config
+        from auhip.core.event_bus import event_bus
+        curr = getattr(config, "VOICE_MODE_ENGINE", "gemini_live")
+        new_engine = "classic" if curr == "gemini_live" else "gemini_live"
+        config.VOICE_MODE_ENGINE = new_engine
+        if new_engine == "gemini_live":
+            self.live_btn.setText("⚡ Live")
+            self.live_btn.setStyleSheet("background: #4338CA; color: #FFFFFF; border: none; border-radius: 14px; padding: 0 10px;")
+        else:
+            self.live_btn.setText("🎙️ Classic")
+            self.live_btn.setStyleSheet("background: #E2E8F0; color: #475569; border: none; border-radius: 14px; padding: 0 10px;")
+        import asyncio
+        asyncio.create_task(event_bus.publish("SET_VOICE_MODE_ENGINE", {"engine": new_engine}))

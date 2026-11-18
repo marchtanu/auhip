@@ -1,6 +1,8 @@
 # AUHIP System Audit Report
 > Generated: 2026-09-04 | Scope: Full codebase — architecture, security, concurrency, performance, UX
 
+> **Historical snapshot:** This audit has not been reconciled with the current source. Treat its resolved/unresolved labels and implementation claims as historical notes; use [PROJECT_DOCUMENTATION.md](../PROJECT_DOCUMENTATION.md) for current tool-safety behavior.
+
 ---
 
 ## Table of Contents
@@ -381,4 +383,3 @@ Initialized `TextToSpeech` in `auhip/daemon/main.py` so headless daemon mode can
 ---
 
 *All 28 audited defects, architectural flaws, security issues, and UX gaps have been fully remediated and verified via automated test suites `tests/test_audit_fixes.py` and `tests/test_polish_and_alignment.py`.*
-

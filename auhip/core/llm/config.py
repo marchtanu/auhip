@@ -26,7 +26,8 @@ class LLMConfig:
     
     # Tool Execution & Security Constraints
     SANDBOX_ALLOWED_DIRS: List[str] = field(default_factory=lambda: [
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")),
+        os.path.abspath(os.getenv("SECOND_BRAIN_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "march_workspace"))),
     ])
 
 

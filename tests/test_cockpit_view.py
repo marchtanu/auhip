@@ -1,6 +1,9 @@
 import os
 import sys
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 import numpy as np
 
 # Ensure project root is on sys.path
@@ -125,6 +128,22 @@ class TestCockpitView(unittest.TestCase):
         modal = TaskManagerModal()
         self.assertIsNotNone(modal)
         modal.refresh_tasks()
+
+    def test_workspace_selection_keeps_roots_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "docs").mkdir()
+            (root / "docs" / "note.md").write_text("second-brain fixture", encoding="utf-8")
+            with patch("auhip.core.config.config.SECOND_BRAIN_PATH", directory):
+                explorer = WorkspaceExplorer()
+            explorer.load_file("main.py")
+            self.assertIn("AuhipMainWindow", explorer.code_viewer.toPlainText())
+            explorer.workspace_selector.setCurrentIndex(1)
+            self.assertEqual(explorer.code_viewer.toPlainText(), "")
+            explorer.load_file("docs/note.md")
+            self.assertIn("second-brain fixture", explorer.code_viewer.toPlainText())
+            explorer.load_file(str(Path(__file__).resolve().parents[1] / "main.py"))
+            self.assertIn("Choose the workspace", explorer.code_viewer.toPlainText())
 
     def test_cockpit_view_deck_switching(self):
         view = CockpitView(self.fsm)

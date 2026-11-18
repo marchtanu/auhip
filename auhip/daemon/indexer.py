@@ -27,7 +27,14 @@ class WorkspaceEventHandler(FileSystemEventHandler):
 
     def _should_index(self, path: str) -> bool:
         _, ext = os.path.splitext(path)
-        return ext.lower() in self.supported_extensions
+        if ext.lower() not in self.supported_extensions:
+            return False
+        normalized = os.path.normpath(path).replace("\\", "/").lower()
+        parts = set(normalized.split("/"))
+        if parts.intersection({".git", ".auhip", ".venv", "__pycache__", "node_modules"}):
+            return False
+        filename = os.path.basename(normalized)
+        return not (filename.startswith(".env") or filename == "memory_records.json")
 
     def _trigger_index(self, path: str, action: str):
         if self._should_index(path):
@@ -101,7 +108,10 @@ class WorkspaceIndexer:
                 if content.strip():
                     await memory_agent.add_long_term_memory(
                         text=content,
-                        metadata={"source": path, "type": "file_chunk"}
+                        metadata={"source": path, "type": "knowledge_chunk"},
+                        memory_type="knowledge_chunk",
+                        source=path,
+                        confidence=0.8,
                     )
                     logger.debug(f"Indexed updated file: {path}")
                     

@@ -79,6 +79,25 @@ class GeminiProvider(BaseLLMProvider):
             "Provide ONLY the JSON output without raw markdown fences or conversational preambles."
         )
 
+        if request.available_tools:
+            tool_descriptions = []
+            for tool in request.available_tools:
+                if isinstance(tool, dict):
+                    name = tool.get("name", "")
+                    description = tool.get("description", "")
+                    parameters = tool.get("parameters", {})
+                else:
+                    name = tool.name
+                    description = tool.description
+                    parameters = getattr(tool, "parameters", {}) or {}
+                tool_descriptions.append(
+                    f"- {name}: {description}; parameters: {json.dumps(parameters, ensure_ascii=False)}"
+                )
+            schema_guidance += (
+                "\nAvailable local tools (call only an exact name in this list):\n"
+                + "\n".join(tool_descriptions)
+            )
+
         contents = []
         system_content = ""
         # Transform history structures to Gemini REST specs, extracting system instructions

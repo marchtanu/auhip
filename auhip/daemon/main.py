@@ -47,7 +47,6 @@ async def main():
 
     # Start foundational services
     event_bus.start()
-    await ipc_server.start()
     service_manager.start_monitor()
 
     # Hardware & State Initialization
@@ -67,6 +66,10 @@ async def main():
     mic.start()
     snap_detector.start()
     await fsm.start()
+    try:
+        await ipc_server.start()
+    except OSError as e:
+        logger.warning("AUHIP IPC notification listener unavailable: %s", e)
 
     logger.info("AUHIP OS Daemon is now actively listening in the background.")
 
@@ -79,6 +82,7 @@ async def main():
         logger.exception(f"Unexpected error in daemon main loop: {e}")
     finally:
         await fsm.stop()
+        await agent.close()
         snap_detector.stop()
         mic.stop()
         tts.stop()

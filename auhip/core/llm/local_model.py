@@ -85,7 +85,24 @@ class OllamaProvider(BaseLLMProvider):
         if request.available_tools:
             tool_defs = []
             for t in request.available_tools:
-                tool_defs.append(f"- {t.name}: {t.description}")
+                if isinstance(t, dict):
+                    name = t.get("name", "")
+                    description = t.get("description", "")
+                    properties = t.get("parameters", {})
+                    required = t.get("required", [])
+                else:
+                    name = t.name
+                    description = t.description
+                    properties = getattr(t, "parameters", {}) or {}
+                    required = getattr(t, "required", []) or []
+                parameter_schema = {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                }
+                tool_defs.append(
+                    f"- {name}: {description} Arguments: {json.dumps(parameter_schema, ensure_ascii=False)}"
+                )
             schema_guidance += "\n\nAvailable Tools:\n" + "\n".join(tool_defs)
 
         system_content = schema_guidance if request.require_structured else ""
@@ -111,7 +128,7 @@ class OllamaProvider(BaseLLMProvider):
             "stream": False,
             "options": {
                 "temperature": 0.4, # Balanced warmth for persona fidelity alongside reliable format constraints
-                "num_ctx": 8192    # Expanded window prevents buffer overflows and repetitive hallucination loops
+                "num_ctx": 2048    # Compact context for voice commands — reduces VRAM pressure & TTFT on 3B model
             }
         }
         
@@ -119,15 +136,25 @@ class OllamaProvider(BaseLLMProvider):
         if request.available_tools and self.supports_tools:
             tools_mapped = []
             for t in request.available_tools:
+                if isinstance(t, dict):
+                    name = t.get("name", "")
+                    description = t.get("description", "")
+                    properties = t.get("parameters", {})
+                    required = t.get("required", [])
+                else:
+                    name = t.name
+                    description = t.description
+                    properties = t.parameters
+                    required = t.required
                 tools_mapped.append({
                     "type": "function",
                     "function": {
-                        "name": t.name,
-                        "description": t.description,
+                        "name": name,
+                        "description": description,
                         "parameters": {
                             "type": "object",
-                            "properties": t.parameters,
-                            "required": t.required
+                            "properties": properties,
+                            "required": required
                         }
                     }
                 })

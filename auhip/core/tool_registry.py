@@ -134,7 +134,8 @@ class ToolRegistry:
             return f"Error: Tool '{name}' not found in registry."
             
         if schema.requires_confirmation:
-            logger.warning(f"Tool {name} requires confirmation. Simulating auto-approve for now.")
+            if os.getenv("AUHIP_ALLOW_UNSAFE_TOOLS", "").strip().lower() not in {"1", "true", "yes"}:
+                return f"Tool '{name}' requires explicit approval and is disabled. Set AUHIP_ALLOW_UNSAFE_TOOLS=true only after reviewing the action."
             
         try:
             if inspect.iscoroutinefunction(handler):
@@ -147,4 +148,3 @@ class ToolRegistry:
             return f"Tool Execution Error: {e}"
 
 tool_registry = ToolRegistry()
-

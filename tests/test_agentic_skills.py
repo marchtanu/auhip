@@ -2,8 +2,13 @@ import unittest
 import os
 import sys
 import asyncio
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-sys.path.insert(0, os.path.abspath("."))
+from auhip.core.llm.tool_manager import ToolManager
+from auhip.core.llm.types import ToolSchema
 
 from auhip.skills.organizer import (
     patch_file,
@@ -16,6 +21,20 @@ from auhip.skills.organizer import (
 
 
 class TestAgenticSkills(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        (self.root / "main.py").write_text("class AuhipMainWindow: pass", encoding="utf-8")
+        boundary = patch("auhip.skills.organizer._get_workspace_root", return_value=str(self.root))
+        boundary.start()
+        self.addCleanup(boundary.stop)
+        self.manager = ToolManager()
+        self.manager._request_confirmation = AsyncMock(return_value=True)
+        self.manager.register_tool(ToolSchema("patch_file", "patch", {
+            "path": {"type": "string"}, "target": {"type": "string"}, "replacement": {"type": "string"},
+        }), patch_file)
+        self.manager.register_tool(ToolSchema("run_powershell_guarded", "shell", {"command": {"type": "string"}}), run_powershell_guarded)
 
     async def test_view_directory_tree(self):
         tree = await view_directory_tree(".", max_depth=2)
@@ -29,34 +48,34 @@ class TestAgenticSkills(unittest.IsolatedAsyncioTestCase):
         self.assertIn("main.py", res)
 
     async def test_patch_file_and_revert(self):
-        test_file = "scratch/test_patch_sample.txt"
-        os.makedirs("scratch", exist_ok=True)
-        with open(test_file, "w", encoding="utf-8") as f:
-            f.write("Hello Alpha World")
-
-        # Patch Alpha -> Beta
-        res = await patch_file(test_file, "Alpha", "Beta")
-        self.assertIn("Successfully patched", res)
-
-        with open(test_file, "r", encoding="utf-8") as f:
-            content = f.read()
-        self.assertEqual(content, "Hello Beta World")
-
-        # Clean up
-        if os.path.exists(test_file):
-            os.remove(test_file)
+        test_file = self.root / "sample.txt"
+        test_file.write_text("Hello Alpha World", encoding="utf-8")
+        result = await self.manager.execute("patch_file", {
+            "path": "sample.txt", "target": "Alpha", "replacement": "Beta",
+        })
+        self.assertIn("Successfully patched", result)
+        self.assertEqual(test_file.read_text(encoding="utf-8"), "Hello Beta World")
 
     async def test_run_powershell_guarded(self):
-        # Safe command
-        out = await run_powershell_guarded("Get-Location")
-        self.assertIn("PowerShell Output", out)
-
-        # Blocked dangerous command
-        blocked = await run_powershell_guarded("rmdir /s /q c:")
-        self.assertIn("Security Restriction", blocked)
+        process = AsyncMock()
+        process.communicate.return_value = (b"fixture path", b"")
+        with patch("auhip.skills.organizer.asyncio.create_subprocess_exec", return_value=process) as spawn:
+            result = await self.manager.execute("run_powershell_guarded", {"command": "Get-Location"})
+            self.assertIn("PowerShell Output", result)
+            spawn.assert_awaited_once()
+            blocked = await self.manager.execute("run_powershell_guarded", {"command": "rmdir /s /q c:"})
+            self.assertIn("Security Restriction", blocked)
+            self.assertEqual(spawn.await_count, 1)
 
     async def test_notebooklm_skills(self):
-        summary = await summarize_notebook("project")
+        previous_directory = os.getcwd()
+        try:
+            os.chdir(self.root)
+            (self.root / "docs").mkdir()
+            (self.root / "docs" / "sample.md").write_text("# Fixture\nA local project note.", encoding="utf-8")
+            summary = await summarize_notebook("project")
+        finally:
+            os.chdir(previous_directory)
         self.assertIsNotNone(summary)
         self.assertIn("Notebook Summary", summary)
 

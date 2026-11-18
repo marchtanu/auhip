@@ -4,8 +4,11 @@ venv
 __pycache__/
 *.pyc
 .env
-skills
-.env.example
+.env.*
+!.env.example
+/skills/
+!.agents/skills/
+!.agents/skills/**
 jarvis.log
 auhip.log
 .pytest_cache
@@ -13,3 +16,8 @@ data/
 scratch/
 auhip_out.txt
 launch_err.txt
+*.log
+screenshots/*
+data/*
+vosk-model-*/
+.auhip/

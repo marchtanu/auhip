@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -9,6 +10,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QTextEdit,
     QFrame,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -50,6 +52,14 @@ class WorkspaceExplorer(QFrame):
         self.title_lbl.setFont(QFont("Inter", 12, QFont.Weight.DemiBold))
         self.title_lbl.setStyleSheet("color: #0C0A09; border: none; background: transparent;")
         header_row.addWidget(self.title_lbl)
+
+        from auhip.core.config import config
+        self.workspace_selector = QComboBox()
+        self.workspace_selector.setAccessibleName("Workspace to browse")
+        self.workspace_selector.addItem("AUHIP project", str(Path(__file__).resolve().parents[4]))
+        self.workspace_selector.addItem("Second brain", config.SECOND_BRAIN_PATH)
+        self.workspace_selector.currentIndexChanged.connect(self.refresh_files)
+        header_row.addWidget(self.workspace_selector)
 
         header_row.addStretch(1)
 
@@ -162,14 +172,19 @@ class WorkspaceExplorer(QFrame):
         layout.addLayout(split_layout, 1)
 
     def refresh_files(self):
-        """Scans Second Brain workspace directory and populates file list."""
+        """Browse one explicit root; never mix project and second-brain paths."""
         self.file_list.clear()
-        from auhip.core.config import config
-        root_dir = config.SECOND_BRAIN_PATH if os.path.exists(config.SECOND_BRAIN_PATH) else "."
+        self.code_viewer.clear()
+        self.file_path_lbl.setText("Choose a file")
+        root_dir = self.workspace_selector.currentData()
         self._current_root = os.path.realpath(root_dir)
-        self.title_lbl.setText(f"📁 Second Brain Explorer ({os.path.basename(self._current_root)})")
+        self.title_lbl.setText(f"📁 Workspace ({os.path.basename(self._current_root)})")
+        if not os.path.isdir(self._current_root):
+            self.code_viewer.setPlainText("This workspace folder is unavailable. Choose another workspace.")
+            return
 
-        target_dirs = ["data", "university", "ai_tools", "media_production", "operations", "documents", "coding"]
+        target_dirs = (["auhip", "docs", "tests"] if self.workspace_selector.currentIndex() == 0 else
+                       ["data", "university", "ai_tools", "media_production", "operations", "documents", "coding"])
         found = []
 
         for d in target_dirs:
@@ -182,19 +197,8 @@ class WorkspaceExplorer(QFrame):
                             rel = os.path.relpath(os.path.join(root, f), self._current_root)
                             found.append(rel.replace("\\", "/"))
 
-        # Fallback to local assistant files if second brain has few files
-        if not found:
-            for d in ["auhip", "docs", "tests"]:
-                if os.path.exists(d):
-                    for root, _, files in os.walk(d):
-                        for f in files:
-                            if f.endswith((".py", ".md", ".json")):
-                                rel = os.path.relpath(os.path.join(root, f), ".")
-                                found.append(rel.replace("\\", "/"))
-
-        # Add root markdown files
-        for f in ["README.md", "AGENTS.md", "SYSTEM_ANALYSIS_CLAUDE.md"]:
-            if os.path.exists(os.path.join(self._current_root, f)):
+        for f in os.listdir(self._current_root):
+            if not f.startswith(".") and f.endswith((".py", ".md")) and os.path.isfile(os.path.join(self._current_root, f)):
                 found.insert(0, f)
 
         for f in sorted(found):
@@ -208,6 +212,11 @@ class WorkspaceExplorer(QFrame):
         root_dir = getattr(self, "_current_root", ".")
         clean_path = os.path.join(root_dir, file_path) if not os.path.isabs(file_path) else file_path
         clean_path = os.path.realpath(clean_path).replace("\\", "/")
+        try:
+            Path(clean_path).relative_to(Path(root_dir).resolve())
+        except ValueError:
+            self.code_viewer.setPlainText("Choose the workspace containing this file before opening it.")
+            return
         rel_label = os.path.relpath(clean_path, root_dir).replace("\\", "/")
         self.file_path_lbl.setText(f"📄 {rel_label}")
 

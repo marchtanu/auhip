@@ -24,6 +24,7 @@ from auhip.audio.speech_recognition import SpeechRecognizer
 from auhip.audio.tts import TextToSpeech
 from auhip.core.state_machine import AuhipStateMachine
 from auhip.core.agent import AuhipAgent
+from auhip.daemon.ipc_server import ipc_server
 from auhip.gui.main_window import AuhipMainWindow
 from auhip.vision.worker import VisionWorker
 
@@ -114,6 +115,12 @@ async def main(mode="direct"):
     # ── 3. Start State Machine ──────────────────────────────────────────────
     await fsm.start()
 
+    # Allow local agent handoff commands to notify this running desktop process.
+    try:
+        await ipc_server.start()
+    except OSError as e:
+        logger.warning("AUHIP IPC notification listener unavailable: %s", e)
+
     # ── 4. Launch Mode Loop ──────────────────────────────────────────────────
     if mode == "direct":
         window.show()  # Display GUI window immediately on launch
@@ -133,6 +140,8 @@ async def main(mode="direct"):
         logger.exception(f"Unexpected error in main loop: {e}")
     finally:
         await fsm.stop()
+        await agent.close()
+        await ipc_server.stop()
         await event_bus.stop()
         snap_detector.stop()
         mic.stop()
@@ -151,9 +160,16 @@ if __name__ == "__main__":
                         help="Startup mode: 'direct' (GUI + auto-activate) or 'standby' (hidden background snap listener)")
     parser.add_argument("--direct", action="store_true", help="Method 1: Direct interactive GUI mode")
     parser.add_argument("--standby", action="store_true", help="Method 2: Standby snap/voice listener mode")
+    parser.add_argument("--live", action="store_true", help="Launch directly into Gemini Multimodal Live streaming voice mode")
+    parser.add_argument("--classic", action="store_true", help="Force classic offline voice engine (Whisper + Ollama + Edge-TTS)")
     
     args, unknown = parser.parse_known_args()
     selected_mode = "standby" if args.standby else ("direct" if args.direct else args.mode)
+
+    if args.live:
+        config.VOICE_MODE_ENGINE = "gemini_live"
+    elif args.classic:
+        config.VOICE_MODE_ENGINE = "classic"
 
     app = QApplication(sys.argv)
     app.setApplicationName("auhip Assistant")

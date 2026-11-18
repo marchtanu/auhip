@@ -3,9 +3,10 @@ import os
 import sys
 import inspect
 import threading
+from pathlib import Path
 
 # Ensure workspace is on sys.path
-WORKSPACE = r"d:\Desktop\Code\personal\project\Jarvis_demo"
+WORKSPACE = str(Path(__file__).resolve().parents[1])
 if WORKSPACE not in sys.path:
     sys.path.insert(0, WORKSPACE)
 
@@ -113,9 +114,21 @@ def test_bug_07_and_state_machine():
     assert "self._voice_cancel_event.clear()" in src, "cancel_event not cleared before re-entering voice mode!"
     assert "is_return=True" in src, "is_return=True not passed on submode exit!"
     
-    src_cancel = inspect.getsource(AuhipStateMachine.on_cancel_all)
-    assert "self._voice_cancel_event.clear()" in src_cancel, "cancel_event not cleared in on_cancel_all!"
-    assert "self._voice_loop()" in src_cancel, "voice_loop not restarted in on_cancel_all!"
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from auhip.core.state_machine import State
+
+    async def verify_cancel():
+        fsm = AuhipStateMachine(SimpleNamespace(), SimpleNamespace())
+        fsm.state = State.PROCESSING
+        fsm._publish_state = AsyncMock()
+        fsm._command_task = asyncio.create_task(asyncio.Event().wait())
+        await fsm.on_cancel_all({})
+        await asyncio.gather(fsm._command_task, return_exceptions=True)
+        assert fsm._command_task.cancelled(), "In-flight command was not cancelled!"
+        assert fsm.state == State.VOICE_MODE
+
+    asyncio.run(verify_cancel())
     
     print("  [PASS] BUG-01, BUG-02, BUG-06, BUG-07, UX-03, UX-05")
 

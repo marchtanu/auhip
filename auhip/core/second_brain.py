@@ -2,12 +2,22 @@ import os
 import json
 import logging
 import asyncio
+from collections import Counter
 from datetime import datetime, date
+import math
+import re
 from typing import Dict, Any, List, Optional, Tuple
 
 from auhip.core.config import config
 
 logger = logging.getLogger(__name__)
+_SEARCH_WORDS = re.compile(r"[\w'-]+", re.UNICODE)
+_SEARCH_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "did", "do", "does", "for",
+    "from", "had", "has", "have", "how", "i", "in", "into", "is", "it", "me", "my", "of",
+    "on", "or", "our", "please", "tell", "that", "the", "their", "them", "this", "to", "was",
+    "we", "what", "when", "where", "which", "who", "why", "with", "you", "your",
+}
 
 
 class SecondBrainService:
@@ -219,13 +229,13 @@ class SecondBrainService:
 
     def search_notes(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         """
-        Searches markdown notes and reports across university/, documents/, operations/.
-        Returns snippet matches with file paths.
+        Searches user-owned second-brain files using ranked local lexical retrieval.
+        Agent receipts and conversation records are stored elsewhere and are excluded.
         """
-        q = query.lower().strip()
-        results: List[Dict[str, str]] = []
-        if not q:
-            return results
+        query_text = query.lower().strip()
+        query_terms = self._search_terms(query_text)
+        if not query_terms:
+            return []
 
         search_dirs = [
             self._resolve("university"),
@@ -234,6 +244,7 @@ class SecondBrainService:
             self._resolve("media_production"),
         ]
 
+        candidates: List[Dict[str, Any]] = []
         for d in search_dirs:
             if not os.path.exists(d):
                 continue
@@ -243,22 +254,74 @@ class SecondBrainService:
                         continue
                     full_p = os.path.join(root, file)
                     try:
+                        if os.path.getsize(full_p) > 2_000_000:
+                            continue
                         with open(full_p, "r", encoding="utf-8", errors="ignore") as f:
                             lines = f.readlines()
                         for idx, line in enumerate(lines):
-                            if q in line.lower():
-                                rel = os.path.relpath(full_p, self.root_path).replace("\\", "/")
-                                snippet = line.strip()[:140]
-                                results.append({
-                                    "file": rel,
-                                    "line": str(idx + 1),
-                                    "snippet": snippet,
-                                })
-                                if len(results) >= max_results:
-                                    return results
+                            words = self._search_terms(line)
+                            overlap = query_terms.intersection(words)
+                            if not overlap:
+                                continue
+                            rel = os.path.relpath(full_p, self.root_path).replace("\\", "/")
+                            candidates.append({
+                                "file": rel,
+                                "line": str(idx + 1),
+                                "snippet": line.strip()[:240],
+                                "source": "personal_knowledge",
+                                "_terms": words,
+                                "_phrase_match": query_text in line.lower(),
+                                "_path_match": bool(query_terms.intersection(self._search_terms(rel))),
+                            })
                     except Exception:
                         continue
-        return results
+
+        if not candidates:
+            return []
+        document_frequency: Counter[str] = Counter()
+        for candidate in candidates:
+            document_frequency.update(set(candidate["_terms"]))
+        average_length = sum(len(candidate["_terms"]) for candidate in candidates) / len(candidates)
+        for candidate in candidates:
+            term_frequencies = Counter(candidate["_terms"])
+            score = 0.0
+            for term in query_terms:
+                frequency = term_frequencies.get(term, 0)
+                if frequency == 0:
+                    continue
+                inverse_frequency = math.log(
+                    1 + (len(candidates) - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5)
+                )
+                denominator = frequency + 1.2 * (0.25 + 0.75 * len(candidate["_terms"]) / max(average_length, 1.0))
+                score += inverse_frequency * frequency * 2.2 / denominator
+            if candidate["_phrase_match"]:
+                score += 1.0
+            if candidate["_path_match"]:
+                score += 0.2
+            candidate["score"] = round(score, 4)
+            candidate.pop("_terms", None)
+            candidate.pop("_phrase_match", None)
+            candidate.pop("_path_match", None)
+
+        candidates.sort(key=lambda result: result["score"], reverse=True)
+        return candidates[:max(1, min(max_results, 20))]
+
+    @staticmethod
+    def _search_terms(text: str) -> set[str]:
+        terms = set()
+        for raw in _SEARCH_WORDS.findall(text.lower()):
+            word = raw.strip("'-_")
+            if len(word) > 5 and word.endswith("ies"):
+                word = word[:-3] + "y"
+            elif len(word) > 5 and word.endswith("ing"):
+                word = word[:-3]
+            elif len(word) > 4 and word.endswith("ed"):
+                word = word[:-2]
+            elif len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+                word = word[:-1]
+            if word and word not in _SEARCH_STOP_WORDS and len(word) > 1:
+                terms.add(word)
+        return terms
 
 
 # Singleton instance
